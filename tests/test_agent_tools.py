@@ -69,16 +69,60 @@ def test_run_qc_runs_and_summarizes(tmp_path, monkeypatch):
 
     ctx = _ctx(tmp_path)
     reg = ToolRegistry(ctx)
-    out = reg.dispatch("run_qc", {"path": str(f), "lanes": "2"})
+    out_dir = str(tmp_path / "out")
+    out = reg.dispatch("run_qc", {"path": str(f), "lanes": "2", "output_dir": out_dir})
     assert out["items"] == 2 and out["unsafe"] == 1
     assert out["tier_distribution"] == {"Music": 2}
     assert out["run_id"] and ctx.last_run_id == out["run_id"]   # last_run_id updated
+    # the chosen folder is reported back so the chat reply can state it
+    assert out["output_dir"] == out_dir
+    assert out["results_path"].startswith(out_dir)
 
 
 def test_run_qc_without_input_errors(tmp_path):
     reg = ToolRegistry(_ctx(tmp_path))
     out = reg.dispatch("run_qc", {})
     assert "error" in out
+
+
+def test_run_qc_without_output_dir_asks_and_does_not_run(tmp_path, monkeypatch):
+    # The run must NOT start until the user says where to save: run_qc returns a
+    # need_output_dir prompt and never constructs the Orchestrator.
+    f = tmp_path / "items.csv"
+    _write_csv(f, [{"id": "v1", "type": "video"}])
+
+    class BoomOrch:
+        def __init__(self, *a, **k):
+            raise AssertionError("Orchestrator must not run without an output_dir")
+    monkeypatch.setattr("ytqc.pipeline.orchestrator.Orchestrator", BoomOrch)
+
+    ctx = _ctx(tmp_path)
+    reg = ToolRegistry(ctx)
+    out = reg.dispatch("run_qc", {"path": str(f), "lanes": 2})   # no output_dir
+    assert out.get("need_output_dir") is True
+    assert "ask" in out
+    assert ctx.last_run_id is None                                # nothing ran
+
+
+def test_run_qc_creates_and_honors_output_dir(tmp_path, monkeypatch):
+    f = tmp_path / "items.csv"
+    _write_csv(f, [{"id": "v1", "type": "video"}])
+
+    seen = {}
+
+    class StubOrch:
+        def __init__(self, cfg, *a, **k):
+            seen["output_dir"] = cfg.output_dir
+        def run(self):
+            return RunStats(done=1)
+    monkeypatch.setattr("ytqc.pipeline.orchestrator.Orchestrator", StubOrch)
+
+    target = tmp_path / "nested" / "qc-results"               # does not exist yet
+    reg = ToolRegistry(_ctx(tmp_path))
+    out = reg.dispatch("run_qc", {"path": str(f), "lanes": 2, "output_dir": str(target)})
+    assert target.is_dir()                                     # created on demand
+    assert seen["output_dir"] == str(target)                  # run wrote there
+    assert out["output_dir"] == str(target)
 
 
 class _CaptureOrch:
@@ -103,7 +147,8 @@ _UC3 = "UCLbdVvreihwZRL6kwuEUYsA"
 def test_run_qc_from_ids(tmp_path, monkeypatch):
     monkeypatch.setattr("ytqc.pipeline.orchestrator.Orchestrator", _CaptureOrch)
     reg = ToolRegistry(_ctx(tmp_path))
-    out = reg.dispatch("run_qc", {"ids": f"{_UC1}, {_UC2}, {_UC3}", "item_type": "channel"})
+    out = reg.dispatch("run_qc", {"ids": f"{_UC1}, {_UC2}, {_UC3}", "item_type": "channel",
+                                  "output_dir": str(tmp_path / "out")})
     assert _CaptureOrch.captured["n"] == 3
     assert _CaptureOrch.captured["types"] == {"channel"}
     assert out["items"] == 3
@@ -119,7 +164,8 @@ def test_run_qc_from_pasted_csv_blob(tmp_path, monkeypatch):
             f"{_UC3},channel,IN - Think Music India\n"
             "UCugG6-k5QGbq_iDEPAnG4NQ,channel,IN - KRAFTON INDIA ESPORTS\n"
             "UCdPsNbQIs6U36fyMdkzOvbQ,channel,IN - Navaan Sandhu")
-    out = reg.dispatch("run_qc", {"ids": blob, "item_type": "channel"})
+    out = reg.dispatch("run_qc", {"ids": blob, "item_type": "channel",
+                                  "output_dir": str(tmp_path / "out")})
     assert _CaptureOrch.captured["n"] == 5
     assert _CaptureOrch.captured["types"] == {"channel"}
     assert all(i.startswith("UC") for i in _CaptureOrch.captured["ids"])
@@ -203,7 +249,8 @@ def test_run_qc_defaults_to_two_lanes(tmp_path, monkeypatch):
     monkeypatch.setattr("ytqc.pipeline.orchestrator.Orchestrator", StubOrch)
 
     reg = ToolRegistry(_ctx(tmp_path))
-    reg.dispatch("run_qc", {"path": str(f)})                 # no lanes given
+    out_dir = str(tmp_path / "out")
+    reg.dispatch("run_qc", {"path": str(f), "output_dir": out_dir})   # no lanes given
     assert captured["lanes"] == 2                            # default = 2
-    reg.dispatch("run_qc", {"path": str(f), "lanes": 5})     # explicit honored
+    reg.dispatch("run_qc", {"path": str(f), "lanes": 5, "output_dir": out_dir})  # explicit honored
     assert captured["lanes"] == 5

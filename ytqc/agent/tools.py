@@ -56,6 +56,22 @@ def _resolve_path(raw: str) -> str:
     raise FileNotFoundError(f"no file at {raw!r} (tried ~ expansion, current dir, and glob)")
 
 
+def _resolve_output_dir(raw: str) -> str:
+    """Expand ~ and make a (possibly new) output FOLDER absolute, creating it if
+    needed. The chat agent asks the user where to save before every run, so this
+    path usually doesn't exist yet — unlike _resolve_path (an existing input
+    file), we create it. Raises if the path exists but isn't a directory."""
+    if not raw or not raw.strip():
+        raise ValueError("no folder given")
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = Path.cwd() / p
+    if p.exists() and not p.is_dir():
+        raise NotADirectoryError(f"{p} exists but is not a folder")
+    p.mkdir(parents=True, exist_ok=True)
+    return str(p)
+
+
 def _est_minutes(items: list) -> float:
     n_videos = sum(1 for i in items if i.type == "video")
     n_channels = len(items) - n_videos
@@ -84,12 +100,12 @@ def _items_from(path: Optional[str], ids: Optional[str], item_type: Optional[str
 # ── tools ──────────────────────────────────────────────────────────────────
 
 def run_qc(ctx: AgentContext, path: str = None, ids: str = None, item_type: str = None,
-           lanes: int = None, workers: int = None, provider: str = None,
+           output_dir: str = None, lanes: int = None, workers: int = None, provider: str = None,
            channel_pages: int = None, limit: int = None, no_comments: bool = False) -> dict:
-    """Start a QC run over a CSV/Excel file (path) or a pasted list of channel/video ids. Pass the user's raw pasted text VERBATIM as `ids` — messy multi-column lines, URLs, and @handles are fine; the tool extracts and dedupes the canonical YouTube ids itself, so do not pre-split or re-type them. This opens real browser tabs and takes minutes; it returns a summary when finished. Use lanes/workers to set parallelism.
+    """Start a QC run over a CSV/Excel file (path) or a pasted list of channel/video ids. Pass the user's raw pasted text VERBATIM as `ids` — messy multi-column lines, URLs, and @handles are fine; the tool extracts and dedupes the canonical YouTube ids itself, so do not pre-split or re-type them. `output_dir` is the folder to save results into and is REQUIRED — always ask the user where to save first; the run will not start without it. This opens real browser tabs and takes minutes; it returns a summary when finished. Use lanes/workers to set parallelism.
 
-    Returns the run id, item counts, where results were written, and a `parsed`
-    breakdown of how the input was understood.
+    Returns the run id, item counts, where results were written (output_dir +
+    results_path), and a `parsed` breakdown of how the input was understood.
     """
     from ytqc.cli import _apply_parallelism
     from ytqc.pipeline.orchestrator import Orchestrator
@@ -102,7 +118,21 @@ def run_qc(ctx: AgentContext, path: str = None, ids: str = None, item_type: str 
     if limit:
         items = items[:limit]
 
+    # Output location is required: do NOT start a run until the user has said
+    # where to save. Bounce back an ask the assistant relays, rather than
+    # silently defaulting to ./ytqc_runs.
+    if not output_dir or not str(output_dir).strip():
+        return {"need_output_dir": True,
+                "ask": "Where should I save the results? Give me a folder path "
+                       "(e.g. ~/Desktop/qc-results) and I'll start the run."}
+    try:
+        resolved_out = _resolve_output_dir(output_dir)
+    except Exception as exc:
+        return {"error": f"couldn't use that output folder ({output_dir!r}): {exc}. "
+                         "Give me a folder path I can write to."}
+
     cfg = ctx.cfg.model_copy(deep=True)
+    cfg.output_dir = resolved_out
     # Chat default is 2 lanes (the measured sweet spot) when the user doesn't
     # specify; the assistant is also prompted to confirm the count before running.
     _apply_parallelism(cfg, lanes if lanes is not None else 2, workers)
@@ -145,6 +175,8 @@ def run_qc(ctx: AgentContext, path: str = None, ids: str = None, item_type: str 
         "run_id": state.run_id, "items": stats.done, "errors": stats.errors,
         "unsafe": stats.unsafe, "needs_review": stats.needs_review,
         "tier_distribution": tiers,
+        "output_dir": out_dir,
+        "run_dir": str(Path(out_dir) / state.run_id),
         "results_path": str(Path(out_dir) / state.run_id / "results.csv"),
     }
     if parse_report is not None:
