@@ -45,7 +45,7 @@ def _apply_macos() -> StepResult:
     except Exception as exc:
         return StepResult("chrome extensions", Status.FAIL, f"could not write policy — {exc}")
     return StepResult("chrome extensions", Status.OK,
-                      f"force-install policy set ({len(wanted)} extensions)")
+                      f"force-install policy set ({len(wanted)}) — extensions load on Chrome restart")
 
 
 # ── Windows (HKCU policy — read by Chrome, no admin) ──────────────────────────
@@ -61,7 +61,7 @@ def _apply_windows() -> StepResult:
     except Exception as exc:
         return StepResult("chrome extensions", Status.FAIL, f"could not write policy — {exc}")
     return StepResult("chrome extensions", Status.OK,
-                      f"force-install policy set ({len(entries)} extensions)")
+                      f"force-install policy set ({len(entries)}) — extensions load on Chrome restart")
 
 
 def apply_policy(console) -> StepResult:
@@ -77,14 +77,37 @@ def apply_policy(console) -> StepResult:
              "/etc/opt/chrome/policies/managed/, or install the extensions from the Web Store.")
 
 
+def _chrome_running() -> Optional[bool]:
+    """True/False if we can determine whether Chrome is running, else None.
+    Best-effort and never raises — a wrong guess only changes guidance wording."""
+    try:
+        if is_windows():
+            r = run(["tasklist", "/FI", "IMAGENAME eq chrome.exe"], timeout=10)
+            return "chrome.exe" in (r.stdout or "").lower()
+        # macOS/Linux: match the real Chrome process to avoid chromedriver/helpers.
+        needle = "Google Chrome" if is_macos() else "chrome"
+        r = run(["pgrep", "-f", needle], timeout=10)
+        return r.returncode == 0 and bool((r.stdout or "").strip())
+    except Exception:
+        return None
+
+
 def restart_chrome(console) -> StepResult:
-    """Relaunch Chrome so it re-reads policy and pulls the forced extensions.
-    Best-effort: if Chrome is open we ask the user to restart it (we don't kill it
-    to avoid losing their tabs)."""
+    """Get Chrome into a state where it has loaded the forced extensions.
+
+    If Chrome is NOT running, just launch it — it reads the policy fresh on startup,
+    so no manual step is needed. If it IS running (or we can't tell), a plain
+    re-spawn won't reload policy, so we ask for a real quit+relaunch (we never kill
+    it — that would lose the user's tabs)."""
     chrome = chrome_binary()
     if not chrome:
         return StepResult("chrome restart", Status.ACTION, "Chrome not found",
                           hint="install Google Chrome, then re-run `ytqc setup`")
+    if _chrome_running() is False and spawn([chrome]) is not None:
+        return StepResult("chrome restart", Status.OK,
+                          "Chrome launched — the forced extensions install on this fresh start")
+    # Chrome is running, we couldn't tell, or the launch failed → ask for a real
+    # quit+relaunch (a re-spawn of a running Chrome won't reload the policy anyway).
     return StepResult(
         "chrome restart", Status.ACTION, "restart Chrome to load the extensions",
         hint="fully quit and reopen Chrome (Cmd/Ctrl+Q), then sign into YouTube; "

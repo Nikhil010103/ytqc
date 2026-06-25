@@ -6,6 +6,7 @@ it needs `ollama signin` (interactive, per-user account) — we detect that need
 surface it as an ACTION rather than failing."""
 from __future__ import annotations
 
+import subprocess
 import time
 from typing import Optional
 
@@ -16,6 +17,18 @@ HOST = "127.0.0.1"
 PORT = 11434
 _AUTH_HINTS = ("sign in", "signin", "unauthorized", "not signed in", "401",
                "log in", "authenticate", "ollama.com/signin")
+
+# A signed-in cloud model registers in seconds; an UNAUTHENTICATED cloud pull
+# either errors fast or HANGS. We cap the first attempt at this bound so the
+# wizard can never freeze for the full pull timeout (the historical failure).
+CLOUD_PROBE_TIMEOUT_S = 30
+PULL_TIMEOUT_S = 1800        # full pull — local models can be multi-GB
+
+
+def _is_cloud(model: str) -> bool:
+    """Ollama cloud models are tagged `…-cloud` (e.g. gemma4:31b-cloud) or `:cloud`."""
+    m = (model or "").strip().lower()
+    return m.endswith("-cloud") or m.endswith(":cloud")
 
 
 def installed() -> bool:
@@ -31,16 +44,20 @@ def install(console) -> StepResult:
         return StepResult("ollama install", Status.OK, "already installed")
     name = os_name()
     try:
+        # capture=False → the installer's own progress shows live, so a multi-minute
+        # download never looks frozen (a real first-run complaint).
         if name == "macos" and which("brew"):
-            console.print("[dim]installing Ollama via Homebrew…[/]")
-            run(["brew", "install", "ollama"], timeout=600)
+            console.print("[dim]installing Ollama via Homebrew (progress below)…[/]")
+            run(["brew", "install", "ollama"], timeout=600, capture=False)
         elif name == "windows" and which("winget"):
-            console.print("[dim]installing Ollama via winget…[/]")
+            console.print("[dim]installing Ollama via winget (progress below)…[/]")
             run(["winget", "install", "--id", "Ollama.Ollama", "-e",
-                 "--accept-package-agreements", "--accept-source-agreements"], timeout=600)
+                 "--accept-package-agreements", "--accept-source-agreements"],
+                timeout=600, capture=False)
         elif name == "linux":
-            console.print("[dim]installing Ollama via official script…[/]")
-            run(["bash", "-c", "curl -fsSL https://ollama.com/install.sh | sh"], timeout=600)
+            console.print("[dim]installing Ollama via official script (progress below)…[/]")
+            run(["bash", "-c", "curl -fsSL https://ollama.com/install.sh | sh"],
+                timeout=600, capture=False)
         else:
             return StepResult(
                 "ollama install", Status.ACTION, "not installed",
@@ -82,7 +99,8 @@ def signin(console) -> StepResult:
     the terminal so the user can complete the flow."""
     if not installed():
         return StepResult("ollama sign-in", Status.FAIL, "ollama not installed")
-    console.print("[hint]Opening Ollama sign-in — complete it in your browser, then return here.[/]")
+    console.print("\n[bold]Ollama sign-in needed[/] — the cloud model is tied to your free Ollama "
+                  "account.\n[dim]A browser window will open; finish signing in, then come back here.[/]")
     try:
         run(["ollama", "signin"], timeout=300, capture=False)
     except Exception as exc:
@@ -91,33 +109,69 @@ def signin(console) -> StepResult:
     return StepResult("ollama sign-in", Status.OK, "sign-in completed")
 
 
+def _pull(model: str, timeout: float, stream: bool = False) -> "tuple[bool, str, bool]":
+    """Run `ollama pull`. Returns (ok, output_lower, timed_out).
+
+    stream=True shows ollama's native download progress live (output NOT captured,
+    so callers must not scan it). stream=False captures output for auth-hint
+    detection. A timeout returns timed_out=True (the child is killed by run())."""
+    try:
+        r = run(["ollama", "pull", model], timeout=timeout, capture=not stream)
+        out = "" if stream else ((r.stderr or "") + (r.stdout or "")).lower()
+        return r.returncode == 0, out, False
+    except subprocess.TimeoutExpired:
+        return False, "", True
+    except Exception as exc:
+        return False, str(exc).lower(), False
+
+
 def ensure_model(model: str, console, interactive: bool = True) -> StepResult:
-    """Make `model` available. Cloud models may require sign-in first; if a pull
-    reports an auth error we sign in (when interactive) and retry once."""
+    """Make `model` available — without ever hanging.
+
+    Cloud models need `ollama signin` first. Rather than firing a 30-minute pull
+    and hoping it errors with a recognizable auth string (the old behavior, which
+    froze the wizard), we probe with a SHORT bounded pull: a signed-in cloud model
+    registers in seconds, while an unauthenticated one errors fast or stalls — both
+    capped here and treated as 'sign in, then pull for real'."""
     if not serving():
         return StepResult(f"model {model}", Status.FAIL, "ollama not running")
     if _model_present(model):
         return StepResult(f"model {model}", Status.OK, "available")
 
-    def _pull() -> "tuple[bool, str]":
-        try:
-            r = run(["ollama", "pull", model], timeout=1800)
-            return r.returncode == 0, ((r.stderr or "") + (r.stdout or "")).lower()
-        except Exception as exc:
-            return False, str(exc).lower()
+    def _full_pull() -> bool:
+        console.print(f"[dim]downloading model {model} (first time can take a while)…[/]")
+        ok, _out, _t = _pull(model, timeout=PULL_TIMEOUT_S, stream=True)
+        return ok or _model_present(model)
 
-    console.print(f"[dim]fetching model {model}…[/]")
-    ok, out = _pull()
-    if not ok and any(h in out for h in _AUTH_HINTS):
-        if not interactive:
-            return StepResult(f"model {model}", Status.ACTION, "sign-in required",
-                              hint="run `ollama signin` (cloud model needs your Ollama account), then re-run setup")
-        signin(console)
-        ok, out = _pull()
-    if ok or _model_present(model):
-        return StepResult(f"model {model}", Status.OK, "ready")
-    return StepResult(f"model {model}", Status.FAIL, "could not fetch model",
-                      hint="check your Ollama account/quota; try `ollama pull " + model + "` manually")
+    def _need_signin_action() -> StepResult:
+        return StepResult(f"model {model}", Status.ACTION, "sign-in required",
+                          hint="run `ollama signin` (the cloud model needs your free Ollama "
+                               "account), then re-run `ytqc setup`")
+
+    if _is_cloud(model):
+        console.print(f"[dim]checking access to cloud model {model}…[/]")
+        ok, out, timed_out = _pull(model, timeout=CLOUD_PROBE_TIMEOUT_S)
+        if ok or _model_present(model):
+            return StepResult(f"model {model}", Status.OK, "ready")
+        if timed_out or any(h in out for h in _AUTH_HINTS):
+            if not interactive:
+                return _need_signin_action()
+            res = signin(console)
+            if res.status != Status.OK:
+                return res                         # don't retry into another hang
+            return (StepResult(f"model {model}", Status.OK, "ready") if _full_pull()
+                    else StepResult(f"model {model}", Status.FAIL,
+                                    "could not fetch model after sign-in",
+                                    hint=f"try `ollama pull {model}` manually to see the error"))
+        # Fast failure that isn't an auth issue (e.g. unknown model name) → surface it.
+        return StepResult(f"model {model}", Status.FAIL,
+                          f"could not fetch cloud model — {out.strip()[:160] or 'unknown error'}",
+                          hint=f"confirm the model name is correct, then try `ollama pull {model}` manually")
+
+    # Local model: no sign-in; stream the (possibly large) download.
+    return (StepResult(f"model {model}", Status.OK, "ready") if _full_pull()
+            else StepResult(f"model {model}", Status.FAIL, "could not fetch model",
+                            hint=f"try `ollama pull {model}` manually to see the error"))
 
 
 def ensure(model: str, console, interactive: bool = True) -> list[StepResult]:

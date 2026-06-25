@@ -32,7 +32,7 @@ PREREQUISITES = [
 ]
 
 TROUBLESHOOTING = [
-    "Re-run `ytqc setup` anytime — it's idempotent and only fixes what's missing (`--repair` re-applies every step).",
+    "Re-run `ytqc setup` anytime — it's idempotent and only fixes what's still missing.",
     "`ytqc doctor` (or `/check` in chat) shows whether the browser bridge + AI model are reachable.",
     "\"browser NOT connected\": open Chrome, make sure the kimi-webbridge extension is on, and focus the window.",
     "Model errors: confirm `ollama signin` succeeded and your account has access to `gemma4:31b-cloud`.",
@@ -89,7 +89,7 @@ def render_guide(console) -> None:
     console.print()
 
     console.print("[bold]Re-running & launching[/]")
-    console.print("  • `ytqc setup` is safe to re-run — it only fixes what's missing (`--repair` forces every step).")
+    console.print("  • `ytqc setup` is safe to re-run — it only fixes what's still missing.")
     console.print("  • `ytqc install-launcher` adds a double-click desktop launcher (runs `ytqc start`).")
     console.print("  • `ytqc start` boots the services (Ollama, kimi, Chrome) then opens the chat.\n")
 

@@ -35,7 +35,7 @@ def status() -> dict:
     if not b:
         return {}
     try:
-        r = run([b, "status"], timeout=15)
+        r = run([b, "status"], timeout=5)
         return json.loads((r.stdout or "").strip() or "{}")
     except Exception:
         return {}
@@ -54,14 +54,22 @@ def install(console) -> StepResult:
         return StepResult(
             "kimi daemon install", Status.ACTION, "manual install needed (Windows)",
             hint=f"install kimi-webbridge from {EXTENSION_PAGE}, then re-run `ytqc setup`")
-    console.print("[dim]installing kimi-webbridge daemon…[/]")
+    console.print("[dim]installing kimi-webbridge daemon (progress below)…[/]")
     try:
-        run(["bash", "-c", f"curl -fsSL {INSTALL_SH} | bash"], timeout=600)
+        # `set -o pipefail` so a curl failure (404/network) propagates as the exit
+        # code instead of being masked by bash's success. capture=False → live
+        # progress (so a slow download never looks frozen).
+        r = run(["bash", "-c", f"set -o pipefail; curl -fsSL {INSTALL_SH} | bash"],
+                timeout=600, capture=False)
     except Exception as exc:
         return StepResult("kimi daemon install", Status.FAIL, f"install failed — {exc}",
                           hint=f"install manually from {EXTENSION_PAGE}")
     if installed():
         return StepResult("kimi daemon install", Status.OK, "installed")
+    if getattr(r, "returncode", 1) != 0:
+        return StepResult("kimi daemon install", Status.FAIL,
+                          "install failed (network or installer error)",
+                          hint=f"check your connection, or install manually from {EXTENSION_PAGE}")
     return StepResult("kimi daemon install", Status.ACTION, "install did not complete",
                       hint=f"finish install from {EXTENSION_PAGE}, then re-run setup")
 

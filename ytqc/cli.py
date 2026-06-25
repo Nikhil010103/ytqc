@@ -291,13 +291,11 @@ def setup(
     model: Optional[str] = typer.Option(None, help="Override the model to install"),
     non_interactive: bool = typer.Option(False, "--non-interactive",
                                          help="Don't prompt; surface manual steps and exit"),
-    repair: bool = typer.Option(False, "--repair", help="Re-apply every step, fixing what's broken"),
 ):
     """One-command setup: installs/starts Ollama + the model, the kimi-webbridge
     daemon, force-installs the Chrome extensions, then opens the chat assistant."""
     from ytqc.setup.wizard import run_setup
-    ok = run_setup(provider=provider, model=model,
-                   non_interactive=non_interactive, repair=repair)
+    ok = run_setup(provider=provider, model=model, non_interactive=non_interactive)
     raise typer.Exit(0 if ok else 1)
 
 
