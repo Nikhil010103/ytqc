@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from ytqc.config import DEFAULT_CONFIG
-from ytqc.setup import checks, chrome, kimi, ollama, wizard
+from ytqc.setup import checks, chrome, deps, kimi, ollama, wizard
 from ytqc.setup.platform import Status
 
 
@@ -222,6 +222,11 @@ def _wire_wizard(monkeypatch, probes_fn, console):
     monkeypatch.setattr(wizard, "save_config", lambda *a, **k: None)
     monkeypatch.setattr(wizard, "CONFIG_PATH", _FakeConfigPath())   # not a first run
     monkeypatch.setattr(wizard, "chrome_binary", lambda: "/x/chrome")
+    monkeypatch.setattr(wizard, "is_macos", lambda: False)          # skip the brew step
+    monkeypatch.setattr(wizard.deps, "ensure_homebrew",
+                        lambda c: wizard.StepResult("homebrew", Status.OK, "ok"))
+    monkeypatch.setattr(wizard.deps, "ensure_chrome",
+                        lambda c: wizard.StepResult("google chrome", Status.OK, "installed"))
     monkeypatch.setattr(wizard.ollama, "ensure",
                         lambda *a, **k: [wizard.StepResult("model", Status.OK, "ready")])
     monkeypatch.setattr(wizard.kimi, "ensure", lambda c: [
@@ -291,3 +296,72 @@ def test_wizard_not_green_when_real_probe_fails(monkeypatch):
     _wire_wizard(monkeypatch, probes, FakeConsole())
     ok = wizard.run_setup(non_interactive=True, offer_chat=False)
     assert ok is False
+
+
+def test_wizard_chrome_install_failure_blocks_green(monkeypatch):
+    """A failed Google Chrome install must keep setup from reporting 'All set'."""
+    probes = lambda *a, **k: [
+        wizard.StepResult("kimi-webbridge", Status.OK, "connected"),
+        wizard.StepResult("llm endpoint", Status.OK, "reachable"),
+    ]
+    _wire_wizard(monkeypatch, probes, FakeConsole())
+    monkeypatch.setattr(wizard.deps, "ensure_chrome",
+                        lambda c: wizard.StepResult("google chrome", Status.FAIL, "install failed"))
+    ok = wizard.run_setup(non_interactive=True, offer_chat=False)
+    assert ok is False
+
+
+# ── deps: Homebrew + Chrome bootstrap (clean-machine) ────────────────────────
+
+def test_ensure_homebrew_noop_on_non_macos(monkeypatch):
+    monkeypatch.setattr(deps, "is_macos", lambda: False)
+    res = deps.ensure_homebrew(FakeConsole())
+    assert res.status == Status.OK and "not needed" in res.message
+
+
+def test_ensure_homebrew_skips_when_present(monkeypatch):
+    monkeypatch.setattr(deps, "is_macos", lambda: True)
+    monkeypatch.setattr(deps, "brew_path", lambda: "/opt/homebrew/bin/brew")
+    monkeypatch.setattr(deps, "run", lambda *a, **k: pytest.fail("must not install when brew present"))
+    res = deps.ensure_homebrew(FakeConsole())
+    assert res.status == Status.OK and "already" in res.message
+
+
+def test_ensure_chrome_skips_when_installed(monkeypatch):
+    monkeypatch.setattr(deps, "chrome_installed", lambda: True)
+    monkeypatch.setattr(deps, "run", lambda *a, **k: pytest.fail("must not install when Chrome present"))
+    res = deps.ensure_chrome(FakeConsole())
+    assert res.status == Status.OK and "already" in res.message
+
+
+def test_ensure_chrome_macos_needs_brew_first(monkeypatch):
+    monkeypatch.setattr(deps, "chrome_installed", lambda: False)
+    monkeypatch.setattr(deps, "os_name", lambda: "macos")
+    monkeypatch.setattr(deps, "brew_path", lambda: None)         # brew not available
+    res = deps.ensure_chrome(FakeConsole())
+    assert res.status == Status.ACTION and "homebrew" in res.message.lower()
+
+
+def test_ensure_chrome_macos_installs_via_cask(monkeypatch):
+    calls = []
+    seq = iter([False, True])                                     # missing → installed
+    monkeypatch.setattr(deps, "chrome_installed", lambda: next(seq))
+    monkeypatch.setattr(deps, "os_name", lambda: "macos")
+    monkeypatch.setattr(deps, "brew_path", lambda: "/opt/homebrew/bin/brew")
+    monkeypatch.setattr(deps, "run", lambda cmd, **k: calls.append(cmd))
+    res = deps.ensure_chrome(FakeConsole())
+    assert res.status == Status.OK
+    assert any("--cask" in c and "google-chrome" in c for c in calls)
+
+
+# ── ollama signin brings up the app on macOS (Ankit's "no browser" hang) ─────
+
+def test_signin_opens_app_on_macos(monkeypatch):
+    monkeypatch.setattr(ollama, "installed", lambda: True)
+    monkeypatch.setattr(ollama, "is_macos", lambda: True)
+    cmds = []
+    monkeypatch.setattr(ollama, "run", lambda cmd, **k: cmds.append(cmd))
+    res = ollama.signin(FakeConsole())
+    assert res.status == Status.OK
+    assert ["open", "-a", "Ollama"] in cmds        # app brought up before signin
+    assert ["ollama", "signin"] in cmds

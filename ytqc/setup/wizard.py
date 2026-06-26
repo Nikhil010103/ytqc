@@ -12,9 +12,9 @@ from rich.console import Console
 from rich.theme import Theme
 
 from ytqc.config import CONFIG_PATH, load_config, save_config
-from ytqc.setup import checks, chrome, kimi, ollama
-from ytqc.setup.platform import (Status, StepResult, chrome_binary, is_windows,
-                                 os_name, port_open, spawn)
+from ytqc.setup import checks, chrome, deps, kimi, ollama
+from ytqc.setup.platform import (Status, StepResult, chrome_binary, is_macos,
+                                 is_windows, os_name, port_open, spawn)
 
 _SYM = {Status.OK: "[green]✓[/]", Status.ACTION: "[yellow]◐[/]",
         Status.WARN: "[yellow]![/]", Status.FAIL: "[red]✗[/]"}
@@ -77,10 +77,13 @@ def run_setup(provider: Optional[str] = None, model: Optional[str] = None,
 
     steps: list[StepResult] = []
 
-    # 1. LLM / Ollama
+    # 1. LLM / Ollama (+ Homebrew bootstrap on a clean Mac, so the install isn't manual)
     console.print("[bold]1. AI model (Ollama)[/]")
     if _manages_local_ollama(profile):
-        r = ollama.ensure(eff_model, console, interactive=interactive)
+        r = []
+        if is_macos():
+            r.append(deps.ensure_homebrew(console))
+        r += ollama.ensure(eff_model, console, interactive=interactive)
     else:
         r = [StepResult("ollama", Status.OK,
                         f"using remote provider {prov!r} — nothing to install")]
@@ -93,19 +96,25 @@ def run_setup(provider: Optional[str] = None, model: Optional[str] = None,
     _render(console, r)
     steps += r
 
-    # 3. Chrome extensions (force-install policy)
-    console.print("\n[bold]3. Chrome extensions (kimi + VidIQ + Adblock)[/]")
+    # 3. Google Chrome (install if missing — QC drives a real Chrome)
+    console.print("\n[bold]3. Google Chrome[/]")
+    r = [deps.ensure_chrome(console)]
+    _render(console, r)
+    steps += r
+
+    # 4. Chrome extensions (force-install policy)
+    console.print("\n[bold]4. Chrome extensions (kimi + VidIQ + Adblock)[/]")
     r = chrome.ensure(console)
     _render(console, r)
     steps += r
 
-    # 4. YouTube sign-in (manual; guidance only — see _youtube_step)
-    console.print("\n[bold]4. YouTube sign-in[/]")
+    # 5. YouTube sign-in (manual; guidance only — see _youtube_step)
+    console.print("\n[bold]5. YouTube sign-in[/]")
     yt = _youtube_step(console)
     _render(console, [yt])
     steps.append(yt)
 
-    # 5. Persist config — on first run, or whenever explicit --provider/--model is
+    # 6. Persist config — on first run, or whenever explicit --provider/--model is
     #    passed (so a re-run with flags doesn't silently revert to the old config).
     if first_run or provider or model:
         if provider:
@@ -115,7 +124,7 @@ def run_setup(provider: Optional[str] = None, model: Optional[str] = None,
         save_config(cfg)
         console.print(f"\n[dim]config saved → {CONFIG_PATH}[/]")
 
-    # 6. Connectivity check (+ optional one-invocation recheck loop)
+    # 7. Connectivity check (+ optional one-invocation recheck loop)
     console.print("\n[bold]Connectivity check[/]")
     probes = checks.doctor_probes(cfg, provider, first_run=first_run)
     _render(console, probes)

@@ -95,12 +95,20 @@ def _model_present(model: str) -> bool:
 
 
 def signin(console) -> StepResult:
-    """Interactive `ollama signin` (opens a browser; per-user account). Inherits
-    the terminal so the user can complete the flow."""
+    """Interactive `ollama signin` (per-user account). Inherits the terminal so the
+    user can complete the flow. The Ollama desktop app brokers the browser hand-off,
+    so on macOS we make sure it's running first — otherwise the sign-in can sit there
+    with no window."""
     if not installed():
         return StepResult("ollama sign-in", Status.FAIL, "ollama not installed")
+    if is_macos():
+        try:
+            run(["open", "-a", "Ollama"], timeout=15)   # best-effort: bring up the app
+        except Exception:
+            pass
     console.print("\n[bold]Ollama sign-in needed[/] — the cloud model is tied to your free Ollama "
-                  "account.\n[dim]A browser window will open; finish signing in, then come back here.[/]")
+                  "account.\n[dim]Your browser should open to finish sign-in. If it doesn't, follow the "
+                  "URL/prompt shown just below, then come back here.[/]")
     try:
         run(["ollama", "signin"], timeout=300, capture=False)
     except Exception as exc:

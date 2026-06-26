@@ -25,10 +25,10 @@ MANUAL_STEPS = [
 ]
 
 PREREQUISITES = [
-    "Google Chrome installed.",
-    "An internet connection (the wizard downloads Ollama + the model).",
+    "An internet connection (the wizard downloads Homebrew, Ollama, Chrome + the model).",
     "An Ollama account (free) for the cloud model — created during `ollama signin`.",
     "Ideally a dedicated Google/YouTube account (Premium avoids ad waits).",
+    "Google Chrome and Homebrew are installed for you if missing — no need to pre-install them.",
 ]
 
 TROUBLESHOOTING = [
@@ -62,13 +62,14 @@ def render_guide(console) -> None:
     """Full setup guide — `ytqc guide` and chat `/guide`."""
     console.print("\n[bold]ytqc — Setup Guide[/]\n")
 
-    console.print("[bold]Quick start[/] (needs Python 3.10+ and git)")
-    console.print("  1. Install from the company Bitbucket repo with pipx (isolated) or pip:")
-    console.print("       [bold]pipx install \"git+ssh://git@bitbucket.org/WORKSPACE/yt-qc-agent.git\"[/]")
-    console.print("       (or [bold]pip install \"git+ssh://git@bitbucket.org/WORKSPACE/yt-qc-agent.git\"[/])")
-    console.print("     update later with `pipx upgrade ytqc`")
-    console.print("  2. [bold]ytqc setup[/]          one command — installs deps, connects Chrome, opens chat")
-    console.print("  3. [bold]ytqc[/]                start the chat assistant anytime\n")
+    console.print("[bold]Quick start[/]")
+    console.print("  • [bold]Brand-new machine[/] (nothing installed): run the one-command bootstrap —")
+    console.print("       macOS:   [bold]curl -fsSL \"$BASE/bootstrap.sh\" | bash[/]")
+    console.print("       Windows: [bold]irm \"$BASE/bootstrap.ps1\" | iex[/]")
+    console.print("     (installs Homebrew, Python, git, Chrome + ytqc, then runs setup)")
+    console.print("  • [bold]Already have Python 3.10+ & git:[/]")
+    console.print("       [bold]pipx install \"git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git\"[/]")
+    console.print("       [bold]ytqc setup[/]   then   [bold]ytqc[/]   (update later: `pipx upgrade ytqc`)\n")
 
     console.print("[bold]Prerequisites[/]")
     for p in PREREQUISITES:
@@ -76,9 +77,11 @@ def render_guide(console) -> None:
     console.print()
 
     console.print("[bold]What `ytqc setup` automates[/]")
+    console.print("  • Homebrew (macOS) — installed first if missing, so the rest is prompt-free")
     console.print("  • Ollama — install, start the server, fetch [bold]gemma4:31b-cloud[/]")
     console.print("  • kimi-webbridge — install + start the browser-bridge daemon")
-    console.print("  • Chrome — force-install the [bold]kimi-webbridge[/], [bold]VidIQ[/] + [bold]Adblock for YouTube[/] extensions (no admin)")
+    console.print("  • Google Chrome — installed (Homebrew cask / winget) if it isn't already")
+    console.print("  • Chrome extensions — force-install [bold]kimi-webbridge[/], [bold]VidIQ[/] + [bold]Adblock for YouTube[/] (no admin)")
     console.print("  • Connectivity — verify everything is reachable (same as `ytqc doctor`)\n")
 
     console.print("[bold yellow]3 steps you do by hand[/] (the wizard opens/guides each):")

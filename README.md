@@ -11,30 +11,38 @@
 
 ## 🚀 Quick start
 
-**1 — Install** &nbsp;(`pipx` keeps `ytqc` isolated and on your PATH)
+> 🔑 **One prerequisite either way:** add your **Bitbucket SSH key** (Bitbucket → Personal
+> settings → SSH keys) so the install can pull from the private repo.
+
+### 🆕 Brand-new machine (nothing installed)
+
+One command installs **everything** — Homebrew, Python, git, Google Chrome, `ytqc` — then
+runs setup. Replace `$BASE` with the internal host the team shares the script from.
+
+```bash
+# macOS
+curl -fsSL "$BASE/bootstrap.sh" | bash
+
+# Windows (PowerShell)
+irm "$BASE/bootstrap.ps1" | iex
+```
+
+### 💻 Already have Python 3.10+ & git
 
 ```bash
 python3 -m pip install --user pipx && python3 -m pipx ensurepath        # one-time, if no pipx
 pipx install "git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git"
+ytqc setup                # one command: installs Ollama + Chrome + extensions, connects everything
 ```
 
-**2 — Set up** &nbsp;(one command — installs deps, connects Chrome, opens chat)
-
-```bash
-ytqc setup
-```
-
-> ⏸️ **The [3 by-hand steps](#-the-3-things-you-do-by-hand--during-ytqc-setup) happen _right here_, inside `ytqc setup`** — the wizard runs on its own, pauses to prompt you for each, then re-checks and finishes once you're done. They are **not** separate steps you run yourself.
-
-**3 — Use it**
+### ▶️ Then use it
 
 ```bash
 ytqc                      # chat:  "QC the channels in ~/Desktop/list.csv"
 ytqc run -i items.csv     # or go straight to a batch run
 ```
 
-> 🧩 **Prerequisites:** Python 3.10+, `git`, Google Chrome, and access to the Bitbucket repo.
-> Other install options (plain pip, HTTPS, dev) are in the section below.
+> ⏸️ **The [3 by-hand steps](#-the-3-things-you-do-by-hand--during-ytqc-setup) happen _inside_ `ytqc setup`** — the wizard runs on its own, pauses to prompt you for each, then re-checks and finishes once you're done. They are **not** separate steps you run yourself.
 
 ---
 
@@ -108,10 +116,13 @@ pip install -e .
 <details>
 <summary><b>⚙️ What <code>ytqc setup</code> automates</b></summary>
 
+On macOS it first installs **Homebrew** (if missing) so the rest can install without prompts.
+
 1. **Ollama** — installs it (Homebrew / winget), starts the server, fetches `gemma4:31b-cloud`.
 2. **kimi-webbridge** — installs and starts the browser-bridge daemon.
-3. **Chrome extensions** — force-installs **kimi-webbridge**, **VidIQ** + **Adblock for YouTube** via a user-scope Chrome policy (no admin).
-4. **Connectivity** — runs the same checks as `ytqc doctor` until everything is green, and (interactively) waits while you finish the 3 manual steps so setup goes green in a single run.
+3. **Google Chrome** — installs it (Homebrew cask / winget) if it isn't already present.
+4. **Chrome extensions** — force-installs **kimi-webbridge**, **VidIQ** + **Adblock for YouTube** via a user-scope Chrome policy (no admin).
+5. **Connectivity** — runs the same checks as `ytqc doctor` until everything is green, and (interactively) waits while you finish the 3 manual steps so setup goes green in a single run.
 
 </details>
 
