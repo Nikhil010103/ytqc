@@ -10,6 +10,15 @@ from ytqc.setup import checks, chrome, deps, kimi, ollama, wizard
 from ytqc.setup.platform import Status
 
 
+@pytest.fixture(autouse=True)
+def _reset_ollama_port():
+    """ollama.PORT is module state mutated by resolve_port()/use_port_from_url();
+    reset it around every test so flexible-port cases don't leak into others."""
+    ollama.PORT = ollama.DEFAULT_PORT
+    yield
+    ollama.PORT = ollama.DEFAULT_PORT
+
+
 class FakeConsole:
     def __init__(self, inputs=None):
         self.lines: list[str] = []
@@ -356,12 +365,114 @@ def test_ensure_chrome_macos_installs_via_cask(monkeypatch):
 
 # ── ollama signin brings up the app on macOS (Ankit's "no browser" hang) ─────
 
-def test_signin_opens_app_on_macos(monkeypatch):
+def test_signin_opens_app_when_no_server(monkeypatch):
+    """No healthy server → bring up the Ollama app, then sign in."""
     monkeypatch.setattr(ollama, "installed", lambda: True)
     monkeypatch.setattr(ollama, "is_macos", lambda: True)
+    monkeypatch.setattr(ollama, "serving", lambda: False)
+    monkeypatch.setattr(ollama.time, "sleep", lambda *_: None)   # no real wait
     cmds = []
     monkeypatch.setattr(ollama, "run", lambda cmd, **k: cmds.append(cmd))
     res = ollama.signin(FakeConsole())
     assert res.status == Status.OK
-    assert ["open", "-a", "Ollama"] in cmds        # app brought up before signin
+    assert ["open", "-a", "Ollama"] in cmds        # app brought up
     assert ["ollama", "signin"] in cmds
+
+
+def test_signin_does_not_clobber_running_server(monkeypatch):
+    """A server is already healthy → must NOT launch the app (the bug that dropped
+    the server mid-signin via a port fight). Only `ollama signin` runs."""
+    monkeypatch.setattr(ollama, "installed", lambda: True)
+    monkeypatch.setattr(ollama, "is_macos", lambda: True)
+    monkeypatch.setattr(ollama, "serving", lambda: True)
+    cmds = []
+    monkeypatch.setattr(ollama, "run", lambda cmd, **k: cmds.append(cmd))
+    res = ollama.signin(FakeConsole())
+    assert res.status == Status.OK
+    assert ["open", "-a", "Ollama"] not in cmds    # did NOT clobber the running server
+    assert ["ollama", "signin"] in cmds
+
+
+# ── ollama server HEALTH check (false-green fix) ─────────────────────────────
+
+def test_ensure_serving_ok_when_healthy(monkeypatch):
+    monkeypatch.setattr(ollama, "server_healthy", lambda *a, **k: True)  # default healthy
+    monkeypatch.setattr(ollama, "spawn", lambda *a, **k: pytest.fail("must not spawn when healthy"))
+    res = ollama.ensure_serving(FakeConsole())
+    assert res.status == Status.OK and str(ollama.DEFAULT_PORT) in res.message
+
+
+def test_ensure_serving_flags_stale_default_when_forced(monkeypatch):
+    """If OLLAMA_HOST pins the default and it's open-but-unhealthy → honest FAIL with
+    the 'stale server squatting the port' hint (not a false green)."""
+    monkeypatch.setenv("OLLAMA_HOST", f"127.0.0.1:{ollama.DEFAULT_PORT}")
+    monkeypatch.setattr(ollama, "server_healthy", lambda *a, **k: False)
+    monkeypatch.setattr(ollama, "installed", lambda: True)
+    monkeypatch.setattr(ollama, "port_open", lambda *a, **k: True)   # port IS held
+    monkeypatch.setattr(ollama, "spawn", lambda *a, **k: 123)
+    monkeypatch.setattr(ollama.time, "sleep", lambda *_: None)
+    res = ollama.ensure_serving(FakeConsole())
+    assert res.status == Status.FAIL
+    assert "held but not responding" in res.message and "pkill ollama" in res.hint
+
+
+# ── flexible port: tolerate a busy 11434 (Ankit's machine) ───────────────────
+
+def test_resolve_port_uses_default_when_free(monkeypatch):
+    monkeypatch.setattr(ollama, "server_healthy", lambda *a, **k: False)
+    monkeypatch.setattr(ollama, "port_open", lambda *a, **k: False)      # nothing anywhere
+    assert ollama.resolve_port() == ollama.DEFAULT_PORT
+
+
+def test_resolve_port_reuses_healthy_default(monkeypatch):
+    monkeypatch.setattr(ollama, "server_healthy", lambda *a, **k: True)  # ollama already up
+    monkeypatch.setattr(ollama, "spawn", lambda *a, **k: pytest.fail("no spawn needed"))
+    assert ollama.resolve_port() == ollama.DEFAULT_PORT
+
+
+def test_resolve_port_moves_off_busy_default(monkeypatch):
+    """11434 taken by another (non-Ollama) task → pick a free port instead."""
+    monkeypatch.setattr(ollama, "server_healthy", lambda *a, **k: False)  # not an ollama
+    monkeypatch.setattr(ollama, "port_open", lambda *a, **k: True)        # but the port IS busy
+    monkeypatch.setattr(ollama, "_free_port", lambda: 11500)
+    assert ollama.resolve_port() == 11500 and ollama.PORT == 11500
+
+
+def test_resolve_port_honors_env(monkeypatch):
+    monkeypatch.setenv("OLLAMA_HOST", "127.0.0.1:9999")
+    assert ollama.resolve_port() == 9999
+
+
+def test_ensure_serving_binds_free_port_when_default_busy(monkeypatch):
+    """End to end: default busy → server comes up on a free port, and every later
+    `ollama` call is pointed there via OLLAMA_HOST."""
+    state = {"up": False}
+    monkeypatch.setattr(ollama, "server_healthy",
+                        lambda timeout=2.0, port=None: state["up"] and (port or ollama.PORT) == 11500)
+    monkeypatch.setattr(ollama, "port_open", lambda *a, **k: True)        # default busy
+    monkeypatch.setattr(ollama, "_free_port", lambda: 11500)
+    monkeypatch.setattr(ollama, "installed", lambda: True)
+    monkeypatch.setattr(ollama.time, "sleep", lambda *_: None)
+    spawned = {}
+    def _spawn(cmd, env=None):
+        state["up"] = True
+        spawned["cmd"], spawned["env"] = cmd, env
+        return 123
+    monkeypatch.setattr(ollama, "spawn", _spawn)
+    res = ollama.ensure_serving(FakeConsole())
+    assert res.status == Status.OK and "11500" in res.message
+    assert ollama.PORT == 11500
+    assert spawned["cmd"] == ["ollama", "serve"]
+    assert spawned["env"] == {"OLLAMA_HOST": "127.0.0.1:11500"}
+
+
+def test_base_url_and_env_track_port():
+    ollama.PORT = 11500
+    assert ollama.base_url() == "http://127.0.0.1:11500/v1"
+    assert ollama._ollama_env() == {"OLLAMA_HOST": "127.0.0.1:11500"}
+
+
+def test_use_port_from_url_aligns_port():
+    ollama.use_port_from_url("http://localhost:12000/v1")
+    assert ollama.PORT == 12000
+    assert ollama.port_from_url("http://localhost:12000/v1") == 12000

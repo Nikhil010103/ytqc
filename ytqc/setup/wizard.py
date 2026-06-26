@@ -80,10 +80,17 @@ def run_setup(provider: Optional[str] = None, model: Optional[str] = None,
     # 1. LLM / Ollama (+ Homebrew bootstrap on a clean Mac, so the install isn't manual)
     console.print("[bold]1. AI model (Ollama)[/]")
     if _manages_local_ollama(profile):
+        ollama.use_port_from_url(profile.base_url)     # respect a previously-bound port
         r = []
         if is_macos():
             r.append(deps.ensure_homebrew(console))
         r += ollama.ensure(eff_model, console, interactive=interactive)
+        # Ollama may have bound a DIFFERENT port (if 11434 was busy) — persist it so
+        # the pipeline + connectivity probe hit the same endpoint.
+        if ollama.port_from_url(profile.base_url) != ollama.PORT:
+            profile.base_url = ollama.base_url()
+            save_config(cfg)
+            console.print(f"[dim]ollama endpoint → {profile.base_url}[/]")
     else:
         r = [StepResult("ollama", Status.OK,
                         f"using remote provider {prov!r} — nothing to install")]
@@ -213,8 +220,10 @@ def boot_services(console) -> None:
     cfg = load_config()
     try:
         profile = cfg.provider(cfg.active_provider)
-        if _manages_local_ollama(profile) and not ollama.serving():
-            ollama.ensure_serving(console)
+        if _manages_local_ollama(profile):
+            ollama.use_port_from_url(profile.base_url)   # talk to the port setup bound
+            if not ollama.serving():
+                ollama.ensure_serving(console)
     except Exception:
         pass
     try:
