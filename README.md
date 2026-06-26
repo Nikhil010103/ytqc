@@ -24,6 +24,8 @@ pipx install "git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git"
 ytqc setup
 ```
 
+> ⏸️ **The [3 by-hand steps](#-the-3-things-you-do-by-hand--during-ytqc-setup) happen _right here_, inside `ytqc setup`** — the wizard runs on its own, pauses to prompt you for each, then re-checks and finishes once you're done. They are **not** separate steps you run yourself.
+
 **3 — Use it**
 
 ```bash
@@ -36,15 +38,18 @@ ytqc run -i items.csv     # or go straight to a batch run
 
 ---
 
-## ✋ The 3 things you do by hand
+## ✋ The 3 things you do by hand — *during* `ytqc setup`
 
-`ytqc setup` automates everything **except** these — and it pauses to guide you through each:
+These all happen **inside step 2 above** — they are **not** separate steps. `ytqc setup` runs
+on its own until it reaches each one, then **pauses and prompts you**; you complete it and
+return. When all three are done, press **Enter** and the wizard re-checks and finishes — no
+re-running needed.
 
-| | Step | Why |
-|:--:|---|---|
-| 1️⃣ | **Sign into YouTube** in Chrome | QC opens real pages. Use a **dedicated** account — YouTube **Premium skips ~20s of ad waits per video**. |
-| 2️⃣ | **`ollama signin`** | the default cloud model is tied to your free Ollama account |
-| 3️⃣ | **Restart Chrome once** | so the auto-installed extensions load |
+| | Step | When the wizard prompts you | Why |
+|:--:|---|---|---|
+| 1️⃣ | **`ollama signin`** | while fetching the AI model | the default cloud model is tied to your free Ollama account |
+| 2️⃣ | **Restart Chrome once** | after it sets the extension policy | so the auto-installed extensions load |
+| 3️⃣ | **Sign into YouTube** in Chrome | after Chrome reopens | QC opens real pages. Use a **dedicated** account — YouTube **Premium skips ~20s of ad waits per video**. |
 
 ✅ Re-run `ytqc setup` anytime — it's **idempotent** and only fixes what's still missing.
 Run `ytqc doctor` to check everything is connected, or `ytqc guide` for the full in-tool walkthrough.
