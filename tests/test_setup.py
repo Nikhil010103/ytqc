@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from ytqc.setup import checks, chrome
 from ytqc.setup import platform as P
-from ytqc.setup.platform import (VIDIQ_EXTENSION_ID, WEBSTORE_UPDATE_URL, Status,
-                                 StepResult)
+from ytqc.setup.platform import (ADBLOCK_YT_EXTENSION_ID, VIDIQ_EXTENSION_ID,
+                                 WEBSTORE_UPDATE_URL, Status, StepResult)
 
 
 def test_os_name_known():
@@ -20,19 +20,30 @@ def test_stepresult_flags():
 
 
 def test_chrome_forcelist_entries(monkeypatch):
-    # kimi id read dynamically; VidIQ is the known store id. Both get the store URL.
+    # kimi id read dynamically; VidIQ + Adblock-for-YouTube are known store ids.
+    # All three get the store URL, in order.
     monkeypatch.setattr(chrome.kimi, "extension_id", lambda: "k" * 32)
     entries = chrome._entries()
     assert entries == [
         f"{'k' * 32};{WEBSTORE_UPDATE_URL}",
         f"{VIDIQ_EXTENSION_ID};{WEBSTORE_UPDATE_URL}",
+        f"{ADBLOCK_YT_EXTENSION_ID};{WEBSTORE_UPDATE_URL}",
     ]
 
 
+def test_chrome_entries_includes_adblock(monkeypatch):
+    # the YouTube ad-blocker is force-installed alongside the others
+    monkeypatch.setattr(chrome.kimi, "extension_id", lambda: "k" * 32)
+    assert any(ADBLOCK_YT_EXTENSION_ID in e for e in chrome._entries())
+
+
 def test_chrome_entries_dedupe(monkeypatch):
-    # if kimi's id ever equals VidIQ's, we don't double-list it
+    # if kimi's id ever equals VidIQ's, we don't double-list it (Adblock still present)
     monkeypatch.setattr(chrome.kimi, "extension_id", lambda: VIDIQ_EXTENSION_ID)
-    assert chrome._entries() == [f"{VIDIQ_EXTENSION_ID};{WEBSTORE_UPDATE_URL}"]
+    assert chrome._entries() == [
+        f"{VIDIQ_EXTENSION_ID};{WEBSTORE_UPDATE_URL}",
+        f"{ADBLOCK_YT_EXTENSION_ID};{WEBSTORE_UPDATE_URL}",
+    ]
 
 
 class _Console:

@@ -110,7 +110,7 @@ pip install -e .
 
 1. **Ollama** — installs it (Homebrew / winget), starts the server, fetches `gemma4:31b-cloud`.
 2. **kimi-webbridge** — installs and starts the browser-bridge daemon.
-3. **Chrome extensions** — force-installs **kimi-webbridge** + **VidIQ** via a user-scope Chrome policy (no admin).
+3. **Chrome extensions** — force-installs **kimi-webbridge**, **VidIQ** + **Adblock for YouTube** via a user-scope Chrome policy (no admin).
 4. **Connectivity** — runs the same checks as `ytqc doctor` until everything is green, and (interactively) waits while you finish the 3 manual steps so setup goes green in a single run.
 
 </details>

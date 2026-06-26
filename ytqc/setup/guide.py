@@ -19,7 +19,7 @@ MANUAL_STEPS = [
     },
     {
         "title": "Restart Chrome once",
-        "why": "Chrome only force-installs the kimi-webbridge + VidIQ extensions on launch, after the policy is set.",
+        "why": "Chrome only force-installs the kimi-webbridge, VidIQ + Adblock-for-YouTube extensions on launch, after the policy is set.",
         "how": "Fully quit Chrome (Cmd+Q / Ctrl+Q) and reopen it once. The extensions then install automatically.",
     },
 ]
@@ -78,7 +78,7 @@ def render_guide(console) -> None:
     console.print("[bold]What `ytqc setup` automates[/]")
     console.print("  • Ollama — install, start the server, fetch [bold]gemma4:31b-cloud[/]")
     console.print("  • kimi-webbridge — install + start the browser-bridge daemon")
-    console.print("  • Chrome — force-install the [bold]kimi-webbridge[/] + [bold]VidIQ[/] extensions (no admin)")
+    console.print("  • Chrome — force-install the [bold]kimi-webbridge[/], [bold]VidIQ[/] + [bold]Adblock for YouTube[/] extensions (no admin)")
     console.print("  • Connectivity — verify everything is reachable (same as `ytqc doctor`)\n")
 
     console.print("[bold yellow]3 steps you do by hand[/] (the wizard opens/guides each):")

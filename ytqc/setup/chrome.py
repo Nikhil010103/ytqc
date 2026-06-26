@@ -1,6 +1,6 @@
-"""Force-install the kimi-webbridge + VidIQ Chrome extensions via a managed
-policy, so they auto-appear on the user's next Chrome launch — no Web Store
-clicking. Uses the USER-scope policy on each OS (no admin):
+"""Force-install the kimi-webbridge, VidIQ + Adblock-for-YouTube Chrome extensions
+via a managed policy, so they auto-appear on the user's next Chrome launch — no Web
+Store clicking. Uses the USER-scope policy on each OS (no admin):
 
   macOS:   `defaults write com.google.Chrome ExtensionInstallForcelist <array>`
   Windows: HKCU\\Software\\Policies\\Google\\Chrome\\ExtensionInstallForcelist
@@ -15,16 +15,17 @@ from pathlib import Path
 from typing import Optional
 
 from ytqc.setup import kimi
-from ytqc.setup.platform import (VIDIQ_EXTENSION_ID, WEBSTORE_UPDATE_URL, Status,
-                                 StepResult, chrome_binary, is_macos, is_windows,
-                                 os_name, run, spawn)
+from ytqc.setup.platform import (ADBLOCK_YT_EXTENSION_ID, VIDIQ_EXTENSION_ID,
+                                 WEBSTORE_UPDATE_URL, Status, StepResult,
+                                 chrome_binary, is_macos, is_windows, os_name, run, spawn)
 
 _ID_RE = re.compile(r"([a-p]{32});https?://[^\s\"']+")
 
 
 def _entries() -> list[str]:
-    """`<id>;<update_url>` for each extension we force-install."""
-    ids = [kimi.extension_id(), VIDIQ_EXTENSION_ID]
+    """`<id>;<update_url>` for each extension we force-install: the kimi bridge,
+    VidIQ (stats overlay), and Adblock for YouTube (cuts ad-wait during QC)."""
+    ids = [kimi.extension_id(), VIDIQ_EXTENSION_ID, ADBLOCK_YT_EXTENSION_ID]
     return [f"{eid};{WEBSTORE_UPDATE_URL}" for eid in dict.fromkeys(ids)]  # dedupe, keep order
 
 

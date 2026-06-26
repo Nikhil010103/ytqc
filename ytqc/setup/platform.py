@@ -118,4 +118,5 @@ def chrome_binary() -> Optional[str]:
 # daemon's status.extension_id; this is the fallback.
 KIMI_EXTENSION_ID = "fldmhceldgbpfpkbgopacenieobmligc"
 VIDIQ_EXTENSION_ID = "pachckjkecffpdphbpmfolblodfkgbhl"
+ADBLOCK_YT_EXTENSION_ID = "cmedhionkhpnakcndndgjdbohmhepckk"  # "Adblock for Youtube™" — cuts ad-wait during QC
 WEBSTORE_UPDATE_URL = "https://clients2.google.com/service/update2/crx"

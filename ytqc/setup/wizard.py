@@ -94,7 +94,7 @@ def run_setup(provider: Optional[str] = None, model: Optional[str] = None,
     steps += r
 
     # 3. Chrome extensions (force-install policy)
-    console.print("\n[bold]3. Chrome extensions (kimi + VidIQ)[/]")
+    console.print("\n[bold]3. Chrome extensions (kimi + VidIQ + Adblock)[/]")
     r = chrome.ensure(console)
     _render(console, r)
     steps += r
