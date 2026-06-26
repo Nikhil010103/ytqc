@@ -11,8 +11,9 @@
 
 ## 🚀 Quick start
 
-> 🔑 **One prerequisite either way:** add your **Bitbucket SSH key** (Bitbucket → Personal
-> settings → SSH keys) so the install can pull from the private repo.
+> 🔑 **Repo access:** the install pulls from the private Bitbucket repo, so you need **either**
+> a Bitbucket **SSH key** **or** your **username + an app password** (HTTPS). No SSH key? Use the
+> [New Mac (HTTPS) section](#-new-mac--step-by-step-https-username--app-password) below.
 
 ### 🆕 Brand-new machine (nothing installed)
 
@@ -33,6 +34,38 @@ irm "$BASE/bootstrap.ps1" | iex
 python3 -m pip install --user pipx && python3 -m pipx ensurepath        # one-time, if no pipx
 pipx install "git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git"
 ytqc setup                # one command: installs Ollama + Chrome + extensions, connects everything
+```
+
+### 🍎 New Mac — step by step (HTTPS, no SSH key)
+
+Authenticate with your Bitbucket **username + app password** — no SSH setup.
+
+**1 — Create a Bitbucket app password** (one-time)
+Bitbucket → **Personal settings → App passwords → Create app password** → tick
+**Repositories: Read** → copy it (looks like `ATBB…`). Your **username** is under
+Personal settings → Account (not your email).
+
+**2 — Install Homebrew, pipx, then ytqc**
+
+```bash
+# Homebrew (skip if `brew` already works)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+eval "$(/opt/homebrew/bin/brew shellenv)"        # Apple Silicon; Intel: /usr/local/bin
+
+brew install pipx git
+pipx ensurepath                                   # then close & reopen Terminal
+
+# pulls over HTTPS — git PROMPTS for your username + app password
+pipx install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"
+```
+
+> At the prompt: **Username** = your Bitbucket username · **Password** = the **app
+> password** (your normal login password will NOT work). Update later with `pipx upgrade ytqc`.
+
+**3 — Set up**
+
+```bash
+ytqc setup                # installs Ollama + Chrome + extensions; pauses for the 3 by-hand steps
 ```
 
 ### ▶️ Then use it
