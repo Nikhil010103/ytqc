@@ -15,18 +15,25 @@
 > a Bitbucket **SSH key** **or** your **username + an app password** (HTTPS). No SSH key? Use the
 > [New Mac (HTTPS) section](#-new-mac--step-by-step-https-username--app-password) below.
 
-### 🆕 Brand-new machine (nothing installed)
+👉 **New Mac? Use the [step-by-step HTTPS guide](#-new-mac--step-by-step-https-username--app-password)
+below — it works today.** The one-command bootstrap is optional and only works *after a
+teammate hosts the script* (next section).
+
+<details>
+<summary><b>🆕 One-command bootstrap (requires hosting first)</b></summary>
 
 One command installs **everything** — Homebrew, Python, git, Google Chrome, `ytqc` — then
-runs setup. Replace `$BASE` with the internal host the team shares the script from.
+runs setup. But `$BASE` must be a **real internal URL** a teammate has uploaded the script
+to (the private Bitbucket repo can't serve it). Until then `$BASE` is a placeholder —
+pasting it literally fails with *"No host part in the URL."*
 
 ```bash
-# macOS
-curl -fsSL "$BASE/bootstrap.sh" | bash
-
-# Windows (PowerShell)
-irm "$BASE/bootstrap.ps1" | iex
+# ONLY once $BASE is a real hosted URL:
+curl -fsSL "$BASE/bootstrap.sh" | bash               # macOS
+irm "$BASE/bootstrap.ps1" | iex                      # Windows (PowerShell)
 ```
+
+</details>
 
 ### 💻 Already have Python 3.10+ & git
 
@@ -61,6 +68,14 @@ pipx install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"
 
 > At the prompt: **Username** = your Bitbucket username · **Password** = the **app
 > password** (your normal login password will NOT work). Update later with `pipx upgrade ytqc`.
+
+> **No app password / no repo access?** A teammate who has access can build the wheel
+> (`pip wheel . --no-deps -w dist`) and send you `ytqc-0.1.0-py3-none-any.whl`. Then install
+> it directly — **no Bitbucket login needed** (deps still come from public PyPI):
+> ```bash
+> brew install pipx        # if you don't have pipx
+> pipx install ./ytqc-0.1.0-py3-none-any.whl
+> ```
 
 **3 — Set up**
 
