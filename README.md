@@ -1,115 +1,138 @@
-# ytqc — Browser-Driven Agentic YouTube QC
+# 🎬 ytqc — Agentic YouTube QC
 
-Automates the TechOps/QC team's manual YouTube vetting: give it a CSV of
-channel/video IDs and it opens each one in a **real browser** (via
-kimi-webbridge), reads the page the way a human QC analyst does — metadata,
-transcript, frames, comments, stats — and writes a validated QC record
-(tier_1/tier_2 category, brand safety, audience, keywords, language, region,
-premium flag + all engagement stats) to CSV/Excel.
+> Point it at a list of YouTube channels/videos. It opens each one in a **real browser**,
+> reads the page the way a human QC analyst would — metadata, transcript, frames, comments,
+> stats — and writes a validated QC record (category, brand safety, audience, language,
+> region, engagement) to **CSV / Excel**.
 
-## Install & set up (macOS / Windows)
+🧠 2 LLM calls/video · 🌐 real-browser extraction · 🛡️ deterministic safety validator · 📊 CSV + styled Excel
 
-`ytqc` is installed with `pip`, straight from the company's private Bitbucket repo.
-Git handles the auth with your existing Bitbucket access — no tokens to paste.
+---
 
-**Prerequisites:** Python 3.10+ and `git` on the machine, plus access to the
-Bitbucket repo. (`python3 --version` / `git --version` to check.)
+## 🚀 Quick start
 
-**Recommended — `pipx`** (installs `ytqc` in its own isolated environment and puts
-it on your PATH):
+**1 — Install** &nbsp;(`pipx` keeps `ytqc` isolated and on your PATH)
 
-```
-python3 -m pip install --user pipx && python3 -m pipx ensurepath   # one-time, if no pipx
-pipx install "git+ssh://git@bitbucket.org/WORKSPACE/yt-qc-agent.git"
-ytqc setup                  # one command: installs deps, connects Chrome, opens chat
+```bash
+python3 -m pip install --user pipx && python3 -m pipx ensurepath        # one-time, if no pipx
+pipx install "git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git"
 ```
 
-**Plain `pip`** (into the current Python / a venv) works too:
+**2 — Set up** &nbsp;(one command — installs deps, connects Chrome, opens chat)
 
-```
-pip install "git+ssh://git@bitbucket.org/WORKSPACE/yt-qc-agent.git"
-# HTTPS instead of SSH:  pip install "git+https://bitbucket.org/WORKSPACE/yt-qc-agent.git"
+```bash
 ytqc setup
 ```
 
-Replace `WORKSPACE` with the actual Bitbucket workspace/repo path. From a local
-checkout, `pip install -e .` also works.
+**3 — Use it**
 
-**Updating:** `pipx upgrade ytqc` (or `pipx reinstall ytqc`), or for plain pip
-re-run the install with `--force-reinstall`.
+```bash
+ytqc                      # chat:  "QC the channels in ~/Desktop/list.csv"
+ytqc run -i items.csv     # or go straight to a batch run
+```
 
-`ytqc setup` is an idempotent wizard that does the heavy lifting:
+> 🧩 **Prerequisites:** Python 3.10+, `git`, Google Chrome, and access to the Bitbucket repo.
+> Other install options (plain pip, HTTPS, dev) are in the section below.
 
-1. **Ollama** — installs it (Homebrew / winget), starts the server, signs you in,
-   and fetches `gemma4:31b-cloud`.
+---
+
+## ✋ The 3 things you do by hand
+
+`ytqc setup` automates everything **except** these — and it pauses to guide you through each:
+
+| | Step | Why |
+|:--:|---|---|
+| 1️⃣ | **Sign into YouTube** in Chrome | QC opens real pages. Use a **dedicated** account — YouTube **Premium skips ~20s of ad waits per video**. |
+| 2️⃣ | **`ollama signin`** | the default cloud model is tied to your free Ollama account |
+| 3️⃣ | **Restart Chrome once** | so the auto-installed extensions load |
+
+✅ Re-run `ytqc setup` anytime — it's **idempotent** and only fixes what's still missing.
+Run `ytqc doctor` to check everything is connected, or `ytqc guide` for the full in-tool walkthrough.
+
+---
+
+## 🧰 Commands
+
+| command | what it does |
+|---|---|
+| `ytqc setup` | one-command wizard: install deps + connect Chrome + open chat |
+| `ytqc` | open the chat assistant (QC in plain language) |
+| `ytqc run -i items.csv` | batch QC run &nbsp;(`--dry-run`, `--extract-only`, `--limit N`, `--lanes`, `--no-comments`) |
+| `ytqc resume <run_id> -i items.csv` | continue an interrupted run (artifacts reused) |
+| `ytqc doctor` | connectivity + model health check |
+| `ytqc guide` | full in-tool setup guide |
+| `ytqc start` | boot services then open chat (desktop-launcher target) |
+| `ytqc install-launcher` | create a double-click desktop launcher |
+| `ytqc taxonomy` | show the closed category / safety vocabularies |
+| `ytqc accuracy --pred results.csv --gold gold.xlsx` | per-field accuracy vs QC-team labels |
+
+📁 Each run writes to `./ytqc_runs/<run_id>/`:
+
+```
+results.csv      every QC field, one row per item
+results.xlsx     styled — 🟢 safe  🟡 needs review  🔴 unsafe  ⚪ error
+state.jsonl      per-item checkpoint (resumable)
+artifacts/       raw extraction JSON per item
+```
+
+---
+
+<details>
+<summary><b>📦 Install options (pip · HTTPS · dev) & updating</b></summary>
+
+Git handles auth with your existing Bitbucket access — no tokens to paste.
+
+```bash
+# Recommended — pipx (isolated):
+pipx install "git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git"
+
+# Plain pip (into the current Python / a venv):
+pip install "git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git"
+
+# HTTPS instead of SSH:
+pip install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"
+
+# From a local checkout (development):
+pip install -e .
+```
+
+**Updating:** `pipx upgrade ytqc` &nbsp;(or `pipx reinstall ytqc`); for plain pip, re-install with `--force-reinstall`.
+
+</details>
+
+<details>
+<summary><b>⚙️ What <code>ytqc setup</code> automates</b></summary>
+
+1. **Ollama** — installs it (Homebrew / winget), starts the server, fetches `gemma4:31b-cloud`.
 2. **kimi-webbridge** — installs and starts the browser-bridge daemon.
-3. **Chrome extensions** — force-installs **kimi-webbridge** + **VidIQ** via a
-   user-scope Chrome policy (no admin), so they auto-appear on next launch.
-4. **Connectivity** — runs the same checks as `ytqc doctor` until everything is green.
+3. **Chrome extensions** — force-installs **kimi-webbridge** + **VidIQ** via a user-scope Chrome policy (no admin).
+4. **Connectivity** — runs the same checks as `ytqc doctor` until everything is green, and (interactively) waits while you finish the 3 manual steps so setup goes green in a single run.
 
-Three steps need a human (the wizard opens/guides each): **sign into YouTube** in
-Chrome (use a dedicated account; **YouTube Premium removes ~20s ad waits/video**),
-**`ollama signin`** (your own account, for the cloud model), and a one-time Chrome
-restart so the forced extensions load. Re-run `ytqc setup` anytime — it only fixes
-what's missing. `ytqc install-launcher` adds a double-click desktop launcher
-(`ytqc start`) that boots the services and opens the chat.
+</details>
 
-**Run [`ytqc guide`](#) (or `/guide` in chat) for the full in-tool setup guide** —
-prerequisites, the one-command flow, and detailed how/why for each manual step.
-
-## Requirements
-
-The wizard installs these for you; listed for reference / manual setups:
-
-- **kimi-webbridge** daemon + Chrome extension, with a logged-in Chrome profile
-  (default `http://127.0.0.1:10086/command`). A dedicated Google account is
-  recommended; **YouTube Premium removes all ad-wait time** (~20s/video otherwise).
-- **Ollama** with `gemma4:31b-cloud` (default brain), or any OpenAI-compatible
-  API — swap providers in `~/.ytqc/config.yaml` or with `--provider/--model`.
-
-## How it works
+<details>
+<summary><b>🔬 How it works</b></summary>
 
 ```
 input.csv ─► browser producer (serial, paced)          analysis workers (parallel)
              ├ player-response metadata                 ├ deterministic safety pre-gate
              ├ transcript panel scrape (60–120s         ├ Vision Analyst   (1 vision call)
-             │  sampled across 5 windows)               ├ Content Analyst  (1 call — mirrors
-             ├ canvas frames at window midpoints        │  taxonomy/safety/audience prompt)
+             │  sampled across 5 windows)               ├ Content Analyst  (1 call — taxonomy/
+             ├ canvas frames at window midpoints        │  safety/audience prompt)
              ├ likes / comments / channel stats         ├ conditional Judge (conflicts only)
              └ artifacts + JSONL checkpoint     ─────►  ├ deterministic validator (closed
                                                         │  vocab, XOR, risk floor, confidence)
                                                         └ sinks: csv / styled xlsx / es(stub)
 ```
 
-- **2 LLM calls/video, ~K+1 per channel** (K sampled videos → briefs → weighted
-  vote → synthesizer). Channel brand safety is worst-case across briefs, never
-  averaged.
-- The LLM never computes stats and never has the last word on vocabulary —
-  the validator enforces the 35-value tier_1 vocab, the Kids XOR rule, and
-  floors risk levels with deterministic term-gate hits.
-- Measured throughput: ~80–100 items/hr mixed (browser-paced for bot hygiene);
-  videos ~16s extraction + ~10s LLM, pipelined.
+- **2 LLM calls/video, ~K+1 per channel** (K sampled videos → briefs → weighted vote → synthesizer). Channel brand safety is worst-case across briefs, never averaged.
+- The LLM never computes stats and never has the last word on vocabulary — the validator enforces the 35-value tier_1 vocab, the Kids XOR rule, and floors risk levels with deterministic term-gate hits.
+- Throughput ~80–100 items/hr mixed (browser-paced for bot hygiene); videos ~16s extraction + ~10s LLM, pipelined.
 
-## Commands
+</details>
 
-| command | purpose |
-|---|---|
-| `ytqc setup` | one-command wizard: install deps + connect Chrome + open chat (`--repair`, `--non-interactive`) |
-| `ytqc guide` | in-tool setup guide (prerequisites + the manual steps) |
-| `ytqc start` | boot services (Ollama, kimi, Chrome) then open chat — the desktop launcher target |
-| `ytqc install-launcher` | create a double-click desktop launcher |
-| `ytqc run -i items.csv` | full QC run (`--extract-only`, `--dry-run`, `--limit`, `--no-comments`, `--no-cache`) |
-| `ytqc resume <run_id> -i items.csv` | continue an interrupted run (saved artifacts reused) |
-| `ytqc doctor` | connectivity + model checks |
-| `ytqc configure` | write/show `~/.ytqc/config.yaml` |
-| `ytqc taxonomy` | show closed vocabularies |
-| `ytqc accuracy --pred results.csv --gold gold.xlsx` | per-field accuracy vs QC-team labels |
-
-Outputs land in `./ytqc_runs/<run_id>/` — `results.csv`, styled `results.xlsx`
-(green=safe, amber=needs review, red=unsafe, grey=error), `state.jsonl`,
-and per-item `artifacts/` (extraction JSON for offline prompt iteration).
-
-## Provider swap
+<details>
+<summary><b>🔁 Swap the AI provider</b></summary>
 
 ```yaml
 # ~/.ytqc/config.yaml
@@ -119,13 +142,30 @@ providers:
            model: "gpt-4o-mini", supports_vision: true}
 ```
 
-Non-vision providers skip the frame analysis with a confidence penalty.
+Use any OpenAI-compatible API. Non-vision providers skip frame analysis with a confidence penalty.
+Override per-run with `--provider` / `--model`.
 
-## Notes
+</details>
 
-- If YouTube serves a bot-check interstitial the run **halts and checkpoints**
-  (never retries into it) — resume later.
-- Captionless videos (~10–20%) degrade to frames+metadata with a confidence
-  cap and a note in the QC `comment` field.
-- Tests: `pytest tests/` (36 tests — validator XOR matrix, sampler math,
-  safety gates, JSON salvage, channel aggregation).
+<details>
+<summary><b>🩺 Troubleshooting</b></summary>
+
+- **Re-run `ytqc setup`** — idempotent; only fixes what's missing.
+- **`ytqc doctor`** (or `/check` in chat) — shows whether the browser bridge + AI model are reachable.
+- **"browser NOT connected"** — open Chrome, make sure the kimi-webbridge extension is on, and focus the window.
+- **Model errors** — confirm `ollama signin` succeeded and your account has access to `gemma4:31b-cloud`.
+- **Captionless videos** (~10–20%) degrade to frames+metadata with a confidence cap and a note in the QC `comment`.
+- **Bot-check interstitial** — the run halts and checkpoints (never retries into it); `ytqc resume` later.
+
+</details>
+
+<details>
+<summary><b>🧪 Development</b></summary>
+
+```bash
+pip install -e ".[dev]"
+pytest tests/            # 279 tests — validator XOR matrix, sampler math, safety gates,
+                         # JSON salvage, channel aggregation, setup/anti-hang robustness
+```
+
+</details>
