@@ -9,14 +9,15 @@
   (which installs Ollama + the model and the Chrome extensions). kimi-webbridge has no
   Windows auto-installer yet, so the wizard guides that one step.
 
-  Auth: pulls ytqc from the private Bitbucket repo over SSH — add your Bitbucket SSH key
-  first. Override the repo with $env:YTQC_REPO if needed.
+  Auth: NO SSH key, NO app password. Git for Windows ships Git Credential Manager, so the
+  pull opens a browser once and you click "Authorize" with your existing Bitbucket login
+  (your repo access grants the download). Override the repo with $env:YTQC_REPO if needed.
 #>
 $ErrorActionPreference = 'Stop'
 function Say($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Die($m) { Write-Host "error: $m" -ForegroundColor Red; exit 1 }
 
-$repo = if ($env:YTQC_REPO) { $env:YTQC_REPO } else { 'git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git' }
+$repo = if ($env:YTQC_REPO) { $env:YTQC_REPO } else { 'git+https://bitbucket.org/silverpush/yt-qc-agent.git' }
 
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
   Die "winget not found. Install 'App Installer' from the Microsoft Store, then re-run."
@@ -38,8 +39,8 @@ python -m pip install --user --quiet pipx
 python -m pipx ensurepath
 $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
 
-# 3. ytqc (from Bitbucket over SSH)
-Say "installing ytqc from Bitbucket (SSH)…"
+# 3. ytqc — first pull opens a browser to authorize with your Bitbucket account
+Say "installing ytqc from Bitbucket (a browser will open to authorize)…"
 pipx install --force $repo
 
 if (-not (Get-Command ytqc -ErrorAction SilentlyContinue)) {

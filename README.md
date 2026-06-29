@@ -11,13 +11,13 @@
 
 ## 🚀 Quick start
 
-> 🔑 **Repo access:** the install pulls from the private Bitbucket repo, so you need **either**
-> a Bitbucket **SSH key** **or** your **username + an app password** (HTTPS). No SSH key? Use the
-> [New Mac (HTTPS) section](#-new-mac--step-by-step-https-username--app-password) below.
+> 🔑 **Access = install.** All you need is to be **granted access to this Bitbucket repo**. The
+> install authorizes through your **browser** with your existing Bitbucket login (via Git
+> Credential Manager) — **no SSH key, no password to type.** See [New Mac — step by step](#-new-mac--step-by-step-repo-access-only).
 
-👉 **New Mac? Use the [step-by-step HTTPS guide](#-new-mac--step-by-step-https-username--app-password)
-below — it works today.** The one-command bootstrap is optional and only works *after a
-teammate hosts the script* (next section).
+👉 **New Mac? Use the [step-by-step guide](#-new-mac--step-by-step-repo-access-only) below — it
+works today.** The one-command bootstrap is optional and only works *after a teammate hosts the
+script* (next section).
 
 <details>
 <summary><b>🆕 One-command bootstrap (requires hosting first)</b></summary>
@@ -39,49 +39,56 @@ irm "$BASE/bootstrap.ps1" | iex                      # Windows (PowerShell)
 
 ```bash
 python3 -m pip install --user pipx && python3 -m pipx ensurepath        # one-time, if no pipx
-pipx install "git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git"
+pipx install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"     # browser-authorizes via your Bitbucket access
 ytqc setup                # one command: installs Ollama + Chrome + extensions, connects everything
 ```
 
-### 🍎 New Mac — step by step (HTTPS, no SSH key)
+### 🍎 New Mac — step by step (repo access only)
 
-Authenticate with your Bitbucket **username + app password** — no SSH setup.
+If you've been **granted access to the repo**, this is all you need — **no SSH key, no app
+password.** Git Credential Manager opens a browser once; you click **Authorize** with your
+Bitbucket login, and you're in.
 
-**1 — Create a Bitbucket app password** (one-time)
-Bitbucket → **Personal settings → App passwords → Create app password** → tick
-**Repositories: Read** → copy it (looks like `ATBB…`). Your **username** is under
-Personal settings → Account (not your email).
-
-**2 — Install Homebrew, pipx, then ytqc**
+**1 — Install Homebrew, tooling, and Git Credential Manager**
 
 ```bash
 # Homebrew (skip if `brew` already works)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-eval "$(/opt/homebrew/bin/brew shellenv)"        # Apple Silicon; Intel: /usr/local/bin
+eval "$(/opt/homebrew/bin/brew shellenv)"          # Apple Silicon; Intel: /usr/local/bin
 
 brew install pipx git
-pipx ensurepath                                   # then close & reopen Terminal
+brew install --cask git-credential-manager         # browser-based Bitbucket auth (no key/password)
+git-credential-manager configure
+pipx ensurepath                                     # then close & reopen Terminal
+```
 
-# pulls over HTTPS — git PROMPTS for your username + app password
+**2 — Install ytqc** (a browser opens once → click **Authorize**)
+
+```bash
 pipx install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"
 ```
 
-> At the prompt: **Username** = your Bitbucket username · **Password** = the **app
-> password** (your normal login password will NOT work). Update later with `pipx upgrade ytqc`.
-
-> **No app password / no repo access?** A teammate who has access can build the wheel
-> (`pip wheel . --no-deps -w dist`) and send you `ytqc-0.1.0-py3-none-any.whl`. Then install
-> it directly — **no Bitbucket login needed** (deps still come from public PyPI):
-> ```bash
-> brew install pipx        # if you don't have pipx
-> pipx install ./ytqc-0.1.0-py3-none-any.whl
-> ```
+> The first pull opens your browser to authorize with Bitbucket — it uses your existing login
+> and your repo access, so there's **no key and no password to type**. It's cached after that.
+> Update later with `pipx upgrade ytqc`.
 
 **3 — Set up**
 
 ```bash
 ytqc setup                # installs Ollama + Chrome + extensions; pauses for the 3 by-hand steps
 ```
+
+<details>
+<summary><b>Fallbacks — if the browser auth isn't available</b></summary>
+
+- **App password:** Bitbucket → Personal settings → App passwords → Create (tick **Repositories:
+  Read**). Then `pipx install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"` and enter
+  your **username + app password** at the prompt (not your login password).
+- **No repo access at all:** a teammate with access builds the wheel
+  (`pip wheel . --no-deps -w dist`) and sends you `ytqc-0.1.0-py3-none-any.whl`; then
+  `pipx install ./ytqc-0.1.0-py3-none-any.whl` — no Bitbucket login needed.
+
+</details>
 
 ### ▶️ Then use it
 
@@ -141,17 +148,18 @@ artifacts/       raw extraction JSON per item
 <details>
 <summary><b>📦 Install options (pip · HTTPS · dev) & updating</b></summary>
 
-Git handles auth with your existing Bitbucket access — no tokens to paste.
+Default is HTTPS — with Git Credential Manager it authorizes in your browser using your
+Bitbucket access (no key/password). SSH also works if you prefer keys.
 
 ```bash
-# Recommended — pipx (isolated):
-pipx install "git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git"
+# Recommended — pipx (isolated), HTTPS + browser auth:
+pipx install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"
 
 # Plain pip (into the current Python / a venv):
-pip install "git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git"
-
-# HTTPS instead of SSH:
 pip install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"
+
+# SSH instead (if you use keys):
+pip install "git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git"
 
 # From a local checkout (development):
 pip install -e .

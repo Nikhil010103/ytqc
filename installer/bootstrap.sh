@@ -4,16 +4,16 @@
 # For a machine with NOTHING installed. Save it and run, or:
 #   curl -fsSL "$BASE/bootstrap.sh" | bash
 #
-# Installs: Homebrew → git, Python, pipx, Google Chrome → ytqc → then runs `ytqc setup`
-# (which installs Ollama + the model, the kimi-webbridge daemon, and the Chrome
+# Installs: Homebrew → git, Python, pipx, Google Chrome, Git Credential Manager →
+# ytqc → then runs `ytqc setup` (Ollama + model, kimi-webbridge daemon, Chrome
 # extensions). Everything except the three by-hand steps the wizard guides you through.
 #
-# Auth: pulls ytqc from the private Bitbucket repo over SSH, so add your Bitbucket SSH
-# key first (Bitbucket → Personal settings → SSH keys). Override the repo with
-# YTQC_REPO if needed.
+# Auth: NO SSH key, NO app password. Pull uses Git Credential Manager — a browser
+# opens once and you click "Authorize" with your existing Bitbucket login (your repo
+# access is what grants the download). Override the repo with YTQC_REPO if needed.
 set -euo pipefail
 
-REPO="${YTQC_REPO:-git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git}"
+REPO="${YTQC_REPO:-git+https://bitbucket.org/silverpush/yt-qc-agent.git}"
 say()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
@@ -37,15 +37,21 @@ brew install --cask google-chrome || say "Chrome already present — skipping"
 pipx ensurepath >/dev/null 2>&1 || true
 export PATH="$HOME/.local/bin:$PATH"   # pipx tool bin for this shell
 
-# 3. ytqc (from Bitbucket over SSH)
-say "installing ytqc from Bitbucket (SSH)…"
+# 3. Git Credential Manager — lets the private-repo pull authenticate via a browser
+#    (your Bitbucket access), so no SSH key and no password are ever typed.
+say "installing Git Credential Manager…"
+brew install --cask git-credential-manager || say "GCM already present — skipping"
+git-credential-manager configure >/dev/null 2>&1 || true
+
+# 4. ytqc — first pull opens a browser to authorize with your Bitbucket account
+say "installing ytqc from Bitbucket (a browser will open to authorize)…"
 pipx install --force "$REPO"
 
 YTQC="$(command -v ytqc || echo "$HOME/.local/bin/ytqc")"
 [ -x "$YTQC" ] || die "ytqc installed but not on PATH — open a new terminal and run: ytqc setup"
 say "installed: $("$YTQC" version 2>/dev/null || echo ytqc)"
 
-# 4. Setup (reattach a TTY when piped through curl|bash).
+# 5. Setup (reattach a TTY when piped through curl|bash).
 if [ -e /dev/tty ]; then
   say "starting ytqc setup…"
   exec "$YTQC" setup </dev/tty
