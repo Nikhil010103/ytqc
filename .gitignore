@@ -27,5 +27,7 @@ ytqc_runs/
 .vscode/
 
 # Local secrets / config
+.env
+.env.*
 .bbcreds
 *.local.json

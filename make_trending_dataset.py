@@ -12,14 +12,17 @@ Outputs (id,type[,label] — the ytqc input contract):
 from __future__ import annotations
 
 import csv
+import os
 import sys
 
 import httpx
 
 HOST = "youtube-data16.p.rapidapi.com"
-KEY = "ab71b22726mshf3160b44313f535p1572adjsn75b06924539b"  # mirrors YT_DATA16_RAPIDAPI_KEY
+# Read the RapidAPI key from the environment — never hard-code secrets.
+#   export YT_DATA16_RAPIDAPI_KEY="…"      (or put it in a gitignored .env)
+KEY = os.environ.get("YT_DATA16_RAPIDAPI_KEY", "")
 REGIONS = ["US", "IN"]
-OUT_DIR = "/Users/nikhilsehgal/projects"
+OUT_DIR = os.environ.get("YTQC_DATASET_OUT", ".")
 
 
 def fetch_region(region: str) -> list[dict]:
@@ -34,6 +37,11 @@ def fetch_region(region: str) -> list[dict]:
 
 
 def main() -> None:
+    if not KEY:
+        print("error: set YT_DATA16_RAPIDAPI_KEY first — a free RapidAPI key for the trending "
+              "test-data source.\n  export YT_DATA16_RAPIDAPI_KEY=…", file=sys.stderr)
+        sys.exit(2)
+
     videos: dict[str, dict] = {}          # video_id -> row (dedup across regions)
     channels: dict[str, dict] = {}        # channel_id -> row
 
