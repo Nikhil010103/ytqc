@@ -5,7 +5,12 @@ import csv
 import pytest
 from rich.console import Console
 
-from ytqc.agent.tools import AgentContext, ToolRegistry, _resolve_path
+from ytqc.agent.tools import (
+    AgentContext,
+    ToolRegistry,
+    _looks_like_file_path,
+    _resolve_path,
+)
 from ytqc.config import load_config
 from ytqc.pipeline.orchestrator import RunStats
 
@@ -102,6 +107,35 @@ def test_run_qc_without_output_dir_asks_and_does_not_run(tmp_path, monkeypatch):
     assert out.get("need_output_dir") is True
     assert "ask" in out
     assert ctx.last_run_id is None                                # nothing ran
+
+
+def test_looks_like_file_path():
+    assert _looks_like_file_path("~/x/out.xlsx") == ".xlsx"
+    assert _looks_like_file_path("~/Desktop/results.CSV") == ".csv"   # case-insensitive
+    assert _looks_like_file_path("~/x/qc-results") is None            # plain folder
+    assert _looks_like_file_path("~/v1.2/runs") is None              # dotted folder, no file suffix
+    assert _looks_like_file_path("") is None
+
+
+def test_run_qc_output_dir_with_extension_asks_and_does_not_run(tmp_path, monkeypatch):
+    # A file-looking output path (e.g. results.csv) must NOT become a folder:
+    # run_qc bounces with need_output_dir and never runs.
+    f = tmp_path / "items.csv"
+    _write_csv(f, [{"id": "v1", "type": "video"}])
+
+    class BoomOrch:
+        def __init__(self, *a, **k):
+            raise AssertionError("must not run with a file-looking output_dir")
+    monkeypatch.setattr("ytqc.pipeline.orchestrator.Orchestrator", BoomOrch)
+
+    ctx = _ctx(tmp_path)
+    reg = ToolRegistry(ctx)
+    bad = str(tmp_path / "Desktop" / "results.csv")
+    out = reg.dispatch("run_qc", {"path": str(f), "lanes": 2, "output_dir": bad})
+    assert out.get("need_output_dir") is True
+    assert "ask" in out
+    assert not (tmp_path / "Desktop" / "results.csv").exists()   # no weird folder
+    assert ctx.last_run_id is None                               # nothing ran
 
 
 def test_run_qc_creates_and_honors_output_dir(tmp_path, monkeypatch):

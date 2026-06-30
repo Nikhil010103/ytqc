@@ -56,6 +56,25 @@ def _resolve_path(raw: str) -> str:
     raise FileNotFoundError(f"no file at {raw!r} (tried ~ expansion, current dir, and glob)")
 
 
+# Extensions that signal "this is a file, not a folder". Curated on purpose so
+# legitimate dotted folder names (v1.2, my.project) are NOT flagged — only the
+# last path component's suffix is checked, against this known set.
+_FILE_EXTS = {
+    ".csv", ".xlsx", ".xls", ".excel", ".tsv", ".json", ".parquet",
+    ".txt", ".pdf", ".zip", ".gz", ".xml", ".html", ".doc", ".docx",
+}
+
+
+def _looks_like_file_path(raw: str) -> Optional[str]:
+    """If `raw`'s final component ends in a known file extension, return that
+    extension (a folder never has one); else None. Used to catch a user who
+    typed a file name where an output FOLDER is expected."""
+    if not raw or not raw.strip():
+        return None
+    ext = Path(raw.strip()).suffix.lower()
+    return ext if ext in _FILE_EXTS else None
+
+
 def _resolve_output_dir(raw: str) -> str:
     """Expand ~ and make a (possibly new) output FOLDER absolute, creating it if
     needed. The chat agent asks the user where to save before every run, so this
@@ -125,6 +144,17 @@ def run_qc(ctx: AgentContext, path: str = None, ids: str = None, item_type: str 
         return {"need_output_dir": True,
                 "ask": "Where should I save the results? Give me a folder path "
                        "(e.g. ~/Desktop/qc-results) and I'll start the run."}
+    # A save location is a FOLDER, so it has no file extension. If the user gave
+    # something that ends in .csv/.xlsx/etc., it's almost certainly a slip — don't
+    # silently create a folder named "results.csv"; bounce back and confirm.
+    ext = _looks_like_file_path(output_dir)
+    if ext:
+        parent = Path(output_dir).expanduser().parent
+        return {"need_output_dir": True,
+                "ask": f"'{output_dir}' looks like a file name, not a folder "
+                       f"(folders don't have a {ext} extension). Results always save "
+                       f"as <folder>/<run_id>/results.csv. Did you mean the folder "
+                       f"{parent}/ , or a different one?"}
     try:
         resolved_out = _resolve_output_dir(output_dir)
     except Exception as exc:
