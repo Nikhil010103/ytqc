@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
 # ytqc — zero-to-running bootstrap (macOS).
 #
-# For a machine with NOTHING installed. Save it and run, or:
-#   curl -fsSL "$BASE/bootstrap.sh" | bash
+# For a machine with NOTHING installed. Save it and run, or pipe it from a host:
+#   curl -fsSL "<URL>" | bash
 #
-# Installs: Homebrew → git, Python, pipx, Google Chrome, Git Credential Manager →
-# ytqc → then runs `ytqc setup` (Ollama + model, kimi-webbridge daemon, Chrome
-# extensions). Everything except the three by-hand steps the wizard guides you through.
-#
-# Auth: NO SSH key, NO app password. Pull uses Git Credential Manager — a browser
-# opens once and you click "Authorize" with your existing Bitbucket login (your repo
-# access is what grants the download). Override the repo with YTQC_REPO if needed.
+# Installs: Homebrew → git, Python, pipx, Google Chrome → ytqc (from the public
+# GitHub repo, no token or account needed) → then runs `ytqc setup` (Ollama +
+# model, kimi-webbridge daemon, Chrome extensions). Everything except the three
+# by-hand steps the wizard guides you through.
 set -euo pipefail
 
-REPO="${YTQC_REPO:-git+https://bitbucket.org/silverpush/yt-qc-agent.git}"
 say()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
@@ -37,21 +33,15 @@ brew install --cask google-chrome || say "Chrome already present — skipping"
 pipx ensurepath >/dev/null 2>&1 || true
 export PATH="$HOME/.local/bin:$PATH"   # pipx tool bin for this shell
 
-# 3. Git Credential Manager — lets the private-repo pull authenticate via a browser
-#    (your Bitbucket access), so no SSH key and no password are ever typed.
-say "installing Git Credential Manager…"
-brew install --cask git-credential-manager || say "GCM already present — skipping"
-git-credential-manager configure >/dev/null 2>&1 || true
-
-# 4. ytqc — first pull opens a browser to authorize with your Bitbucket account
-say "installing ytqc from Bitbucket (a browser will open to authorize)…"
-pipx install --force "$REPO"
+# 3. Install ytqc from the public GitHub repo (no token, no account needed).
+say "installing ytqc…"
+pipx install --force "git+https://github.com/Nikhil010103/ytqc.git"
 
 YTQC="$(command -v ytqc || echo "$HOME/.local/bin/ytqc")"
 [ -x "$YTQC" ] || die "ytqc installed but not on PATH — open a new terminal and run: ytqc setup"
 say "installed: $("$YTQC" version 2>/dev/null || echo ytqc)"
 
-# 5. Setup (reattach a TTY when piped through curl|bash).
+# 4. Setup (reattach a TTY when piped through curl|bash).
 if [ -e /dev/tty ]; then
   say "starting ytqc setup…"
   exec "$YTQC" setup </dev/tty

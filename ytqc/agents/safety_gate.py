@@ -3,7 +3,7 @@
 Pre-gate: word-boundary term scan over title+description+tags+transcript →
 rule hits injected into the analyst prompt and enforced post-hoc.
 Post-gate: risk_level can never be LOWER than what the rule hits imply
-(campaign_auditing / yt_llm safety_mcp pattern: rules gate, LLM nuances)."""
+(rules gate, LLM nuances)."""
 from __future__ import annotations
 
 import re

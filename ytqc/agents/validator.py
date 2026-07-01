@@ -1,9 +1,8 @@
 """Deterministic validator — final authority on vocabulary and structure.
 
-The normalization/XOR block is lifted from mirrors-inventory-management
-backend/app/routers/video_analysis.py (server-side enforcement: never trust
-the LLM's structure blindly). Also computes the deterministic confidence
-score and the needs_review flag."""
+The normalization/XOR block enforces structure deterministically — never trust
+the LLM's output blindly. Also computes the deterministic confidence score and
+the needs_review flag."""
 from __future__ import annotations
 
 import logging

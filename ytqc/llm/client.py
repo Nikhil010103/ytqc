@@ -1,7 +1,6 @@
 """LLM client: OpenAI SDK against any OpenAI-compatible endpoint (Ollama /v1
-by default). JSON salvage parser lifted from yt_llm/agents/base_agent.py;
-429 backoff from yt_qc_checker.py; temperature escalation 0.1→0.3→0.6 from
-mirrors' chatbot pattern."""
+by default). Includes JSON salvage parser, 429 backoff, and temperature
+escalation 0.1→0.3→0.6."""
 from __future__ import annotations
 
 import contextlib

@@ -8,77 +8,22 @@ Point it at a list of YouTube channels/videos. It opens each one in a real brows
 
 ## 🚀 Quick start
 
-🔑 **Access = install.** All you need is to be granted access to this Bitbucket repo. The install authorizes through your browser with your existing Bitbucket login (via Git Credential Manager) — no SSH key, no password to type. See [New Mac — step by step](#-new-mac--step-by-step-repo-access-only) below.
-
-<details>
-<summary>🆕 One-command bootstrap (requires hosting first)</summary>
-
-> ⚠️ **`$BASE` is not yet a real URL.** Running the command below as-is will fail with *"No host part in the URL."* This section only works after a teammate hosts the script at a real internal URL. Until then, **use the step-by-step guide below instead.**
-
-One command installs **everything** — Homebrew, Python, git, Google Chrome, `ytqc` — then runs setup. But `$BASE` must be a **real internal URL** a teammate has uploaded the script to (the private Bitbucket repo can't serve it).
-
 ```bash
-# ONLY once $BASE is a real hosted URL:
-curl -fsSL "$BASE/bootstrap.sh" | bash               # macOS
-irm "$BASE/bootstrap.ps1" | iex                      # Windows (PowerShell)
+pipx install "git+https://github.com/Nikhil010103/ytqc.git"   # or: pip install "git+https://github.com/Nikhil010103/ytqc.git"
+ytqc setup
 ```
 
-</details>
+That's it — no token, no account, no SSH key. The two commands install `ytqc` and run the setup wizard (installs Homebrew, Ollama, Chrome, and the browser bridge; pauses for the 3 by-hand steps below).
 
----
-
-## 💻 Already have Python 3.10+ & git
-
+**Pin a specific version:**
 ```bash
-python3 -m pip install --user pipx && python3 -m pipx ensurepath
-source ~/.zshrc   # or close & reopen Terminal
-pipx install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"   # browser-authorizes via your Bitbucket access
-ytqc setup        # wizard runs; when it pauses for ollama signin, complete it:
-ollama signin     # opens browser → sign in → return to terminal, then press Enter
+pipx install "git+https://github.com/Nikhil010103/ytqc.git@v0.1.0"
 ```
 
----
-
-## 🍎 New Mac — step by step (repo access only)
-
-If you've been granted access to the repo, this is all you need — no SSH key, no app password. Git Credential Manager opens a browser once; you click Authorize with your Bitbucket login, and you're in.
-
-### 1 — Install Homebrew, tooling, and Git Credential Manager
-
+**Updating:**
 ```bash
-# Homebrew (skip if `brew` already works)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-eval "$(/opt/homebrew/bin/brew shellenv)"          # Apple Silicon; Intel: /usr/local/bin
-
-brew install pipx git
-brew install --cask git-credential-manager         # browser-based Bitbucket auth (no key/password)
-git-credential-manager configure
-pipx ensurepath
-source ~/.zshrc   # or close & reopen Terminal
+pipx upgrade ytqc
 ```
-
-### 2 — Install ytqc (a browser opens once → click Authorize)
-
-```bash
-pipx install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"
-```
-
-The first pull opens your browser to authorize with Bitbucket — it uses your existing login and your repo access, so there's no key and no password to type. It's cached after that. Update later with `pipx upgrade ytqc`.
-
-### 3 — Set up
-
-```bash
-ytqc setup        # installs Ollama + Chrome + extensions; pauses for the 3 by-hand steps
-ollama signin     # run this when the wizard pauses and prompts you — opens browser to sign in
-```
-
-<details>
-<summary>Fallbacks — if the browser auth isn't available</summary>
-
-- **App password:** Bitbucket → Personal settings → App passwords → Create (tick **Repositories: Read**). Then `pipx install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"` and enter your **username + app password** at the prompt (not your login password).
-- **No repo access at all:** a teammate with access builds the wheel (`pip wheel . --no-deps -w dist`) and sends you `ytqc-0.1.0-py3-none-any.whl`; then `pipx install ./ytqc-0.1.0-py3-none-any.whl` — no Bitbucket login needed.
-
-</details>
 
 ---
 
@@ -132,29 +77,6 @@ artifacts/       raw extraction JSON per item
 ```
 
 ---
-
-<details>
-<summary>📦 Install options (pip · HTTPS · dev) & updating</summary>
-
-Default is HTTPS — with Git Credential Manager it authorizes in your browser using your Bitbucket access (no key/password). SSH also works if you prefer keys.
-
-```bash
-# Recommended — pipx (isolated), HTTPS + browser auth:
-pipx install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"
-
-# Plain pip (into the current Python / a venv):
-pip install "git+https://bitbucket.org/silverpush/yt-qc-agent.git"
-
-# SSH instead (if you use keys):
-pip install "git+ssh://git@bitbucket.org/silverpush/yt-qc-agent.git"
-
-# From a local checkout (development):
-pip install -e .
-```
-
-**Updating:** `pipx upgrade ytqc`  (or `pipx reinstall ytqc`); for plain pip, re-install with `--force-reinstall`.
-
-</details>
 
 <details>
 <summary>⚙️ What ytqc setup automates</summary>
@@ -223,6 +145,8 @@ Use any OpenAI-compatible API. Non-vision providers skip frame analysis with a c
 <summary>🧪 Development</summary>
 
 ```bash
+git clone https://github.com/Nikhil010103/ytqc.git
+cd ytqc
 pip install -e ".[dev]"
 pytest tests/            # 297 tests — validator XOR matrix, sampler math, safety gates,
                          # JSON salvage, channel aggregation, setup/anti-hang robustness

@@ -67,9 +67,8 @@ def render_guide(console) -> None:
     console.print("       macOS:   [bold]curl -fsSL \"$BASE/bootstrap.sh\" | bash[/]")
     console.print("       Windows: [bold]irm \"$BASE/bootstrap.ps1\" | iex[/]")
     console.print("     (installs Homebrew, Python, git, Chrome + ytqc, then runs setup)")
-    console.print("  • [bold]Already have Python 3.10+ & git:[/] (repo access only — no SSH key/password)")
-    console.print("       [bold]pipx install \"git+https://bitbucket.org/silverpush/yt-qc-agent.git\"[/]")
-    console.print("       (a browser opens once to authorize with your Bitbucket login)")
+    console.print("  • [bold]Already have Python 3.10+ & git:[/]")
+    console.print("       [bold]pipx install \"git+https://github.com/Nikhil010103/ytqc.git\"[/]")
     console.print("       [bold]ytqc setup[/]   then   [bold]ytqc[/]   (update later: `pipx upgrade ytqc`)\n")
 
     console.print("[bold]Prerequisites[/]")

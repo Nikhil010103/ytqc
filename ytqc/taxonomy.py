@@ -1,9 +1,7 @@
 """Closed vocabularies and safety taxonomy.
 
 TIER_1_CATEGORIES, KIDS_AGE_GROUPS, adult bands and the 12-value brand-safety
-category list are lifted from mirrors-inventory-management
-backend/app/routers/video_analysis.py / channel_analysis.py — they are the QC
-team's source of truth and must not drift from it.
+category list are the QC team's source of truth and must not drift.
 """
 from __future__ import annotations
 
@@ -49,7 +47,7 @@ PROMPT_TRIGGER_TO_CATEGORY = {
 }
 
 # ── Deterministic safety pre-gate term lists ─────────────────────────────
-# Groups extend yt_llm/mcp/safety_mcp.py _UNSAFE_TO_GROUP / _CAMPAIGN_TO_GROUP.
+# Deterministic unsafe / campaign-sensitive term groups feeding the safety pre-gate.
 # Scanned (case-insensitive, word-boundary) over title+description+tags+transcript.
 UNSAFE_TERM_GROUPS: dict[str, tuple[str, ...]] = {
     "alcohol": ("alcohol", "beer", "wine", "whiskey", "vodka", "liquor", "brewery", "spirits"),

@@ -1,13 +1,12 @@
 
-"""Prompts. The video-analysis system prompt is lifted from
-mirrors-inventory-management backend/app/routers/video_analysis.py and
-extended in three marked places for ytqc's multimodal inputs:
+"""Prompts. The video-analysis system prompt is extended in three marked places
+for ytqc's multimodal inputs:
   [YTQC-EDIT 1] transcript/visual/rule-gate input blocks declared
   [YTQC-EDIT 2] signal hierarchy + brand-safety scope extended to transcript
   [YTQC-EDIT 3] three added output fields (suitable_age_group,
                 is_premium_luxury, qc_notes)
 The __TIER_1_LIST__ placeholder is replaced at call time (placeholder-replace,
-not f-string, to avoid escaping the JSON braces — mirrors' pattern).
+not f-string, to avoid escaping the JSON braces).
 """
 from __future__ import annotations
 
