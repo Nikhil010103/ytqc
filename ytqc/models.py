@@ -162,6 +162,7 @@ class AnalystOutput(BaseModel):
     tier_2: Optional[str] = None
     tier_classification_reasoning: Optional[str] = None
     keywords: list[str] = Field(default_factory=list)
+    lookalike_keywords: list[str] = Field(default_factory=list)
     language: Optional[str] = None
     targeted_region: Optional[str] = None
     kids_age_group: Optional[str] = None
@@ -194,6 +195,7 @@ class QCRecord(BaseModel):
     audience_gender: str = "any"
     audience_interests: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
+    lookalike_keywords: list[str] = Field(default_factory=list)
     content_themes: list[str] = Field(default_factory=list)
     topics: list[str] = Field(default_factory=list)
     sentiment: str = "neutral"

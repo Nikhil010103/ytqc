@@ -108,6 +108,7 @@ def _fill_record(rec: QCRecord, out) -> None:
     rec.audience_gender = out.targeted_audience.gender
     rec.audience_interests = out.targeted_audience.interests
     rec.keywords = out.keywords
+    rec.lookalike_keywords = out.lookalike_keywords
     rec.content_themes = out.content_themes
     rec.topics = out.topics
     rec.sentiment = out.sentiment

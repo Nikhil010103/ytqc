@@ -78,6 +78,54 @@ def test_unparseable_risk_is_conservative():
     assert out.brand_safety.is_safe is False
 
 
+def test_news_tier1_forced_brand_unsafe():
+    # News is always brand-unsafe by policy even when the LLM claims it's clean.
+    out = normalize(base_result(
+        tier_1="News", tier_2="breaking news",
+        brand_safety={"risk_level": "none", "triggered_categories": [], "explanation": "clean"},
+    ), "vid1")
+    assert out.brand_safety.risk_level == "medium"
+    assert out.brand_safety.is_safe is False
+    assert "Political Content" in out.brand_safety.triggered_categories
+
+
+def test_religion_tier1_forced_brand_unsafe():
+    out = normalize(base_result(
+        tier_1="Religion", tier_2="sermons",
+        brand_safety={"risk_level": "none", "triggered_categories": [], "explanation": "clean"},
+    ), "vid1")
+    assert out.brand_safety.risk_level == "medium"
+    assert out.brand_safety.is_safe is False
+    assert "Controversial Social Issues" in out.brand_safety.triggered_categories
+
+
+def test_policy_floor_never_lowers_higher_llm_risk():
+    # The floor may only RAISE risk — a News video the LLM flagged 'high' stays high.
+    out = normalize(base_result(
+        tier_1="News",
+        brand_safety={"risk_level": "high", "triggered_categories": ["Hate Speech"],
+                      "explanation": "slur in title"},
+    ), "vid1")
+    assert out.brand_safety.risk_level == "high"
+    assert "Political Content" in out.brand_safety.triggered_categories
+    assert "Hate Speech" in out.brand_safety.triggered_categories
+
+
+def test_non_policy_tier1_not_floored():
+    out = normalize(base_result(tier_1="Gaming"), "vid1")
+    assert out.brand_safety.risk_level == "none"
+    assert out.brand_safety.is_safe is True
+
+
+def test_lookalike_keywords_normalized():
+    out = normalize(base_result(
+        lookalike_keywords=["World News", " GEOPOLITICS ", "", "a", "b", "c", "d", "e", "f", "g"],
+    ), "vid1")
+    assert out.lookalike_keywords[:2] == ["world news", "geopolitics"]
+    assert len(out.lookalike_keywords) <= 8
+    assert all(k == k.lower() for k in out.lookalike_keywords)
+
+
 def test_brand_unsafe_category_priority():
     bs = BrandSafety(is_safe=False, risk_level="high",
                      triggered_categories=["Gambling", "Adult Content"])

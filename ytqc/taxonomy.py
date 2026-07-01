@@ -24,7 +24,7 @@ GENDER_VALUES = {"male", "female", "mixed", "any"}
 
 RISK_LEVELS = ("none", "low", "medium", "high")
 
-# The 12 brand-safety categories used across mirrors channel/video analysis.
+# The 12 brand-safety categories used across channel/video analysis.
 SAFETY_CATEGORIES = (
     "Adult Content", "Violent Content", "Hate Speech",
     "Profanity & Offensive Language", "Drugs & Tobacco", "Alcohol",
@@ -32,6 +32,15 @@ SAFETY_CATEGORIES = (
     "Controversial Social Issues", "Dangerous Activities",
     "Sensational & Shocking Content",
 )
+
+# tier_1 categories that are ALWAYS brand-unsafe regardless of the LLM verdict.
+# News/politics and religious content are sensitive placements most advertisers
+# exclude by policy, so the validator floors their risk deterministically. Maps
+# each such tier_1 → (min risk_level to enforce, brand-safety category to record).
+HARDCODED_UNSAFE_TIER1: dict[str, tuple[str, str]] = {
+    "News": ("medium", "Political Content"),
+    "Religion": ("medium", "Controversial Social Issues"),
+}
 
 # The video-analysis prompt (lifted verbatim) emits its own bolded trigger
 # labels; the validator normalizes them onto SAFETY_CATEGORIES via this map.
