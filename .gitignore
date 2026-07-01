@@ -31,3 +31,4 @@ ytqc_runs/
 .env.*
 .bbcreds
 *.local.json
+make_trending_dataset.py
