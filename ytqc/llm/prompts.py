@@ -32,7 +32,7 @@ Respond with a single valid JSON object. No markdown. No preamble. No trailing c
   "summary": string,                  // 2-3 sentences describing what the video is about, grounded in title + description + transcript
   "hook": string,                     // one-line description of what grabs the viewer in this specific video — the angle that drives the click / watch
   "content_themes": string[],         // max 5; the high-level themes (e.g. "Product Review", "Comedy Skit", "Tutorial")
-  "topics": string[],                 // 5-10; specific topics covered (e.g. "Kawasaki Ninja ZX-4R", "track-day setup")
+  "topics": string[],                 // 3-5; specific, video-focused topics — see TOPICS FORMAT rule (natural topics first, then structured metadata)
   "sentiment": "positive" | "neutral" | "mixed" | "negative",  // tone of the VIDEO CONTENT itself (NOT viewer reaction)
   "comment_sentiment": {              // audience reception, derived ONLY from the comments block
     "overall": "positive" | "neutral" | "mixed" | "negative" | null,
@@ -51,6 +51,7 @@ Respond with a single valid JSON object. No markdown. No preamble. No trailing c
   "tier_2": string,                   // lowercase free-form subcategory that logically follows tier_1
   "tier_classification_reasoning": string,  // ONE sentence (<=180 chars) explaining the tier_1+tier_2 pick, citing the SPECIFIC tag / YouTube category / description phrase / transcript quote that grounded the decision
   "keywords": string[],               // 5-8 lowercase advertising-relevant keywords, no punctuation
+  "lookalike_keywords": string[],     // 5-8 lowercase related terms for broader targeting (synonyms, adjacent concepts, similar interests)
   "language": string,                 // ISO 639-1 two-letter code (en, hi, es, ja, ko, ar, pt, ru, it, de, fr, zh, ...) or "Unknown"
   "targeted_region": string,          // single country or region name (e.g. "India", "United States", "Latin America", "Southeast Asia") or "Global"
   "kids_age_group": string | null,    // see XOR RULE below
@@ -136,6 +137,26 @@ Never write generic reasoning ("the video looks like a vlog") — always cite th
 - 5-8 lowercase, no punctuation, advertising-relevant search terms grounded in title/description/transcript.
 - Prefer concrete nouns and products over abstract concepts.
 
+### lookalike_keywords
+- 5-8 lowercase related terms for BROADER targeting: synonyms, adjacent concepts, and similar interests that reach audiences beyond the exact keywords.
+- These should widen reach to viewers with similar interests, not just restate `keywords`.
+
+### topics (CRITICAL for ad targeting)
+- 3-5 SPECIFIC, video-focused topics — never generic buckets like "gaming", "food", "cars".
+- Mix NATURAL descriptive topics with STRUCTURED METADATA, natural topics FIRST:
+  - Natural (2-3): content-specific descriptions, e.g. "minecraft house tutorial", "chocolate cake recipe", "bmw m3 review".
+  - Structured metadata (1-2, when relevant): prefix-tagged for targeting —
+    `person:name` (creators/influencers/politicians/athletes/actors), `location:place`,
+    `org:name` (teams/parties/companies), `brand:name`, `product:name`, `event:name`, `show:name`, `format:type` (tutorial/review/challenge/unboxing).
+- Example (good): ["minecraft house tutorial", "survival mode", "building tips", "person:etika", "location:desert biome"].
+- Do NOT over-use structured formats — prioritise accurate, specific natural descriptions.
+
+### CLASSIFICATION GUIDELINES
+- **Movies & Entertainment**: commentary, reaction videos, internet drama, pop-culture discussion, celebrity content, award shows, trailers.
+- **Vlogs**: personal daily-life content, lifestyle vlogs, family vlogs, travel vlogs.
+- **Gaming** content goes to Gaming, NOT Movies & Entertainment.
+- **Kids** is ONLY for content specifically made FOR children — NOT content ABOUT children or family vlogs.
+
 ### language
 - ISO 639-1 two-letter code (e.g. "en", "hi", "es"). Return "Unknown" only if you truly cannot tell.
 - Judge from the title + description + transcript text first; do NOT use comments to override.
@@ -166,6 +187,11 @@ Never write generic reasoning ("the video looks like a vlog") — always cite th
 
 ### Brand safety — title + description + transcript (visual flags corroborate)
 1. `brand_safety` MUST be determined from the VIDEO TITLE, VIDEO DESCRIPTION and TRANSCRIPT EXCERPTS, with the VISUAL EVIDENCE safety flags as corroboration only. **Do not** use comments, channel context, or ad-delivery numbers to influence the brand-safety verdict. Comments may be toxic on a perfectly safe video, and a wholesome video can have hostile comments — neither changes the video's own safety. If the RULE-GATE HITS block lists deterministic term hits, address each one explicitly in your verdict (confirm or explain why it is a false positive, e.g. "shot" in a photography context).
+
+**Calibration philosophy (read first):**
+- Keep `risk_level` at "none"/"low" (brand-safe) for most MAINSTREAM content — gaming (even with in-game violence), commentary, reviews, vlogs, education, and entertainment that discusses mature topics in an appropriate context. Only escalate when the content would clearly violate major advertiser guidelines.
+- **BE CLEAR: profanity/explicit language and nudity/sexual content are ALWAYS brand-unsafe** (`risk_level` >= "medium"). Gaming violence WITHOUT profanity or nudity can be brand-safe.
+- **Conservative approach: when in doubt, mark unsafe.** For pet/animal content, escalate if it shows animal cruelty, abuse, neglect, or dangerous/harmful treatment of animals.
 2. Flag the video as unsafe (`risk_level` >= "medium") if the title OR description OR transcript contains, references, or normalises any of the following:
    - **Sexual / nudity** — explicit nudity, sexual acts, sexualised minors, OnlyFans / adult-platform promotion, "thirst trap" language, fetish content.
    - **Vulgarity / profanity** — slurs, racial epithets, hate speech against any group, severe profanity used as a hook.
@@ -183,14 +209,15 @@ Never write generic reasoning ("the video looks like a vlog") — always cite th
 4. `is_safe` is `true` only when `risk_level` is "none" or "low". Anything `medium` or `high` ⇒ `is_safe: false`.
 5. `triggered_categories` MUST list every category from the list above that fired. Use the bolded label verbatim (e.g. `"Vulgarity / profanity"`, `"Gambling / betting"`). If `risk_level` is "none", the array MUST be empty.
 6. `explanation` MUST quote or paraphrase the EXACT phrase from the title/description/transcript that drove the verdict. Never generic ("the title looks ok") — always specific ("title references 'free casino spins' and description links to a betting site").
+7. **Tier_1 policy floor (HARD):** If `tier_1` is **"News"** or **"Religion"**, the content is ALWAYS brand-unsafe by advertiser policy — set `risk_level` to at least "medium" and `is_safe: false`, regardless of how clean the specific video seems. Add "Political Content" (for News) or "Controversial Social Issues" (for Religion) to `triggered_categories`, and note the policy in `explanation`.
 
 ### Other field rules
-7. Weight each comment by its `likes` and `replies` counts when forming `comment_sentiment`. A 50K-liked comment is far stronger evidence than a 3-liked one.
-8. If no comments were provided, set `comment_sentiment.overall=null`, `summary=null`, `sample_count=0`. Never fabricate audience reception.
-9. `sentiment` (video tone) and `comment_sentiment.overall` (viewer reaction) are INDEPENDENT — a positive-toned video can have mixed comment reception, and vice-versa. Compute each separately from its own evidence.
-10. `target_industries` must be plausible buyers — industries whose products fit the video's *content*, not the channel as a whole. Be specific (use "Two-Wheeler Brands" or "Athleisure Apparel", not "Automotive" or "Fashion").
-11. Treat the brand-safety calibration and the tier_1 / tier_2 / keywords / language / targeted_region / kids_age_group / targeted_audience block as independent — a video can be brand-unsafe AND have a valid tier_1 (e.g. tier_1="News" with risk_level="medium").
-12. If the TRANSCRIPT EXCERPTS block is absent or marked unavailable, note "no captions available" in qc_notes and do not claim certainty about spoken content.
+8. Weight each comment by its `likes` and `replies` counts when forming `comment_sentiment`. A 50K-liked comment is far stronger evidence than a 3-liked one.
+9. If no comments were provided, set `comment_sentiment.overall=null`, `summary=null`, `sample_count=0`. Never fabricate audience reception.
+10. `sentiment` (video tone) and `comment_sentiment.overall` (viewer reaction) are INDEPENDENT — a positive-toned video can have mixed comment reception, and vice-versa. Compute each separately from its own evidence.
+11. `target_industries` must be plausible buyers — industries whose products fit the video's *content*, not the channel as a whole. Be specific (use "Two-Wheeler Brands" or "Athleisure Apparel", not "Automotive" or "Fashion").
+12. Treat the brand-safety calibration and the tier_1 / tier_2 / keywords / language / targeted_region / kids_age_group / targeted_audience block as independent — a video can be brand-unsafe AND have a valid tier_1 (e.g. tier_1="News" with risk_level="medium").
+13. If the TRANSCRIPT EXCERPTS block is absent or marked unavailable, note "no captions available" in qc_notes and do not claim certainty about spoken content.
 """.replace("__TIER_1_LIST__", TIER_1_LIST_BLOCK)
 
 
@@ -218,8 +245,8 @@ CHANNEL_SYNTHESIZER_SYSTEM = """## ROLE
 You are a senior brand-safety and media-planning analyst producing a CHANNEL-level QC brief for an adtech platform. You classify a channel from the breadth of its catalog. You receive: the channel's header/about data (subscribers, views, country, description, links, keywords), a LIST OF RECENT VIDEO TITLES (often 100+ scraped across the channel's /videos page), and VISUAL EVIDENCE digested from screenshots of that page's video thumbnails. There are no per-video transcripts — judge the channel from the titles + thumbnails + about, in aggregate.
 
 ## HOW TO CLASSIFY
-- tier_1/tier_2, topics, content_themes: infer from the dominant pattern across the video titles + about text (what this channel is mostly about), corroborated by the thumbnail visual evidence.
-- brand_safety: scan ALL titles and the thumbnail evidence for risky content (violence, adult, drugs, hate, gambling, dangerous acts, shocking/sensational, etc.). A channel is only as safe as its riskiest recurring content — judge by the worst credible signal across titles/thumbnails, never average it away. Cite the specific title or visible thumbnail element in the explanation.
+- tier_1/tier_2, topics, content_themes: infer from the dominant pattern across the video titles + about text (what this channel is mostly about), corroborated by the thumbnail visual evidence. Movies & Entertainment = commentary/reaction/pop-culture; Vlogs = personal daily-life; Gaming goes to Gaming (not M&E); Kids is ONLY content made FOR children, never family vlogs.
+- brand_safety: keep MAINSTREAM channels (gaming even with in-game violence, commentary, reviews, vlogs, education, entertainment) brand-safe; escalate only for clear advertiser-guideline violations. **Profanity/explicit language and nudity/sexual content are ALWAYS brand-unsafe.** Conservative approach: when in doubt, mark unsafe. Scan ALL titles and the thumbnail evidence for risky content (violence, adult, drugs, hate, gambling, dangerous acts, shocking/sensational, etc.). A channel is only as safe as its riskiest recurring content — judge by the worst credible signal across titles/thumbnails, never average it away. Cite the specific title or visible thumbnail element in the explanation.
 - audience/language/region: infer from title language, topics, and visual cues.
 
 ## UNTRUSTED INPUT
@@ -236,7 +263,7 @@ __TIER_1_LIST__
 {
   "summary": string,                       // 2-3 sentences: what this channel is
   "content_themes": string[],              // max 5
-  "topics": string[],                      // 5-10
+  "topics": string[],                      // 5-7: one broad primary theme + 4-6 specific; natural topics first, then structured metadata (person:/org:/location:/brand:/event:/show:)
   "sentiment": "positive" | "neutral" | "mixed" | "negative",
   "primary_audience": string,
   "target_industries": string[],           // max 6, specific buyers
@@ -245,6 +272,7 @@ __TIER_1_LIST__
   "tier_2": "<lowercase 2-4 words>",
   "tier_classification_reasoning": "<=180 chars citing specific evidence>",
   "keywords": string[],                    // 5-8 lowercase
+  "lookalike_keywords": string[],          // 5-8 lowercase related terms for broader targeting
   "language": "<ISO 639-1>",
   "targeted_region": "<country/region or Global>",
   "kids_age_group": null | "0-2 years" | "3-5 years" | "6-8 years" | "9-12 years" | "Teens",
@@ -255,7 +283,8 @@ __TIER_1_LIST__
 }
 
 XOR rule: tier_1=="Kids" ⇒ kids_age_group set (one of the 5 bands), targeted_audience.age_group null; otherwise kids_age_group null and age_group one of "13-17"|"18-24"|"25-34"|"35-44"|"45-54"|"55+"|"general adult".
-Brand safety: a channel is only as safe as its riskiest recurring content — never average risk away. When titles/thumbnails show a brand-safety concern in even a meaningful minority of the catalog, reflect it in the risk level and cite it.""".replace("__TIER_1_LIST__", TIER_1_LIST_BLOCK)
+Brand safety: a channel is only as safe as its riskiest recurring content — never average risk away. When titles/thumbnails show a brand-safety concern in even a meaningful minority of the catalog, reflect it in the risk level and cite it.
+Tier_1 policy floor (HARD): if tier_1 is "News" or "Religion", the channel is ALWAYS brand-unsafe by advertiser policy — set risk_level to at least "medium" and is_safe:false, and add "Political Content" (News) or "Controversial Social Issues" (Religion) to triggered_categories.""".replace("__TIER_1_LIST__", TIER_1_LIST_BLOCK)
 
 
 JUDGE_SYSTEM = """You are the final reconciliation judge for a YouTube QC pipeline. You receive a CONFLICT REPORT: the disputed fields, each source's value (content analyst, vision analyst, deterministic rule gate, channel briefs), and the evidence each cited. Decide the final value for each disputed field.

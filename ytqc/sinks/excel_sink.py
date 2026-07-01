@@ -16,7 +16,7 @@ from ytqc.sinks.base import ResultSink
 COLUMNS = list(QCRecord.model_fields.keys())
 
 _WIDE = {"name": 44, "summary": 60, "comment": 44, "tier_classification_reasoning": 50,
-         "brand_safety_explanation": 50, "keywords": 36, "topics": 36,
+         "brand_safety_explanation": 50, "keywords": 36, "lookalike_keywords": 36, "topics": 36,
          "content_themes": 30, "audience_interests": 30,
          "brand_safety_triggered_categories": 30, "error": 40,
          "vidiq_insight": 60, "vidiq_signals": 44, "vidiq_similar_channels": 30,

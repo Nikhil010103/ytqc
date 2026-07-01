@@ -11,11 +11,13 @@ from ytqc.models import AnalystOutput, BrandSafety, TargetedAudience
 from ytqc.taxonomy import (
     ADULT_AGE_BANDS,
     GENDER_VALUES,
+    HARDCODED_UNSAFE_TIER1,
     KIDS_AGE_GROUPS,
     PROMPT_TRIGGER_TO_CATEGORY,
     RISK_LEVELS,
     SAFETY_CATEGORIES,
     TIER_1_CATEGORIES,
+    risk_at_least,
 )
 
 log = logging.getLogger("ytqc.validator")
@@ -43,6 +45,11 @@ def normalize(llm_result: dict, item_id: str = "?") -> AnalystOutput:
     keywords = [
         str(k).strip().lower()
         for k in (llm_result.get("keywords") or [])
+        if str(k).strip()
+    ][:8]
+    lookalike_keywords = [
+        str(k).strip().lower()
+        for k in (llm_result.get("lookalike_keywords") or [])
         if str(k).strip()
     ][:8]
     language = (llm_result.get("language") or "").strip() or None
@@ -92,6 +99,16 @@ def normalize(llm_result: dict, item_id: str = "?") -> AnalystOutput:
         mapped = PROMPT_TRIGGER_TO_CATEGORY.get(cat_s.lower(), cat_s)
         if mapped in SAFETY_CATEGORIES and mapped not in triggered:
             triggered.append(mapped)
+    # Hardcoded tier_1 policy floor: News/politics and Religion are always
+    # brand-unsafe regardless of the LLM verdict — floor risk and record the
+    # policy category so the row can never be marked safe for these placements.
+    floor = HARDCODED_UNSAFE_TIER1.get(tier_1)
+    if floor is not None:
+        min_risk, policy_category = floor
+        risk_level = risk_at_least(risk_level, min_risk)
+        if policy_category in SAFETY_CATEGORIES and policy_category not in triggered:
+            triggered.append(policy_category)
+
     is_safe = risk_level in ("none", "low")     # derived, never trusted from LLM
     brand_safety = BrandSafety(
         is_safe=is_safe,
@@ -122,6 +139,7 @@ def normalize(llm_result: dict, item_id: str = "?") -> AnalystOutput:
         tier_2=tier_2,
         tier_classification_reasoning=tier_reasoning,
         keywords=keywords,
+        lookalike_keywords=lookalike_keywords,
         language=language,
         targeted_region=targeted_region,
         kids_age_group=kids_age_group,
