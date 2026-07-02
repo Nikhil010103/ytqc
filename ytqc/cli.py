@@ -92,26 +92,36 @@ def _apply_parallelism(cfg, lanes: Optional[int], workers: Optional[int]) -> Non
             "Google account; expect occasional captcha halts (resume continues).")
 
 
-def _read_input(path: str) -> list:
+def _read_input(path: str, default_type: Optional[str] = None):
+    """Read a CSV/Excel of channels/videos into (items, ParseReport, id_column).
+
+    The id column is auto-detected (by header hint + content sniff) and its
+    cells are normalized the same way pasted text is — so URLs, @handles, bare
+    ids, or a differently-named column all work, not just a literal 'id' column.
+    `default_type` is the fallback for a bare, shape-ambiguous id with no `type`
+    column (kept at 'channel' to match historical behavior)."""
     import pandas as pd
 
-    from ytqc.models import InputItem
+    from ytqc.input_parse import detect_id_column, items_from_rows
     p = Path(path)
     df = (pd.read_excel(p, dtype=str) if p.suffix.lower() in (".xlsx", ".xls")
           else pd.read_csv(p, dtype=str))
     df.columns = [c.strip().lower() for c in df.columns]
-    if "id" not in df.columns:
-        raise typer.BadParameter("input file must have an 'id' column")
-    if "type" not in df.columns:
-        df["type"] = "channel"
-    items = []
-    for row in df.dropna(subset=["id"]).to_dict("records"):
-        items.append(InputItem(
-            id=str(row["id"]).strip(),
-            type=str(row.get("type", "channel")).strip().lower(),
-            label=(str(row["label"]).strip() if row.get("label") else None),
-        ))
-    return items
+    columns = list(df.columns)
+    rows = df.to_dict("records")
+    id_col = detect_id_column(columns, rows)
+    if id_col is None:
+        raise typer.BadParameter(
+            f"couldn't find a column of YouTube ids/URLs/@handles in {p.name}. "
+            f"Columns seen: {columns}. Add a column of channel/video URLs or ids "
+            "(or name one 'id').")
+    type_col = "type" if "type" in columns else None
+    label_col = next((c for c in ("label", "name") if c in columns), None)
+    items, report = items_from_rows(
+        rows, id_col, type_col, label_col, default_type=default_type or "channel",
+        trust_raw=(id_col == "id"))          # an explicit 'id' column is taken as given
+    report.detected_column = id_col
+    return items, report, id_col
 
 
 @app.command()
@@ -145,7 +155,7 @@ def run(
     _apply_parallelism(cfg, lanes, workers)
     out_dir = output_dir or cfg.output_dir
 
-    items = _read_input(input)
+    items, _report, _id_col = _read_input(input)
     if limit:
         items = items[:limit]
     console.print(f"[bold]ytqc v{__version__}[/] — {len(items)} item(s) from {input}")
@@ -226,7 +236,7 @@ def resume(
     from ytqc.sinks.base import build_sinks
 
     state = RunState.resume(out_dir, run_id)
-    items = _read_input(input)
+    items, _report, _id_col = _read_input(input)
     sinks = build_sinks(sink.split(","))
     for s in sinks:
         s.open(run_id, out_dir)
