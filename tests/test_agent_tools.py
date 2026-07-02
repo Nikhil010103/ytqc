@@ -288,3 +288,32 @@ def test_run_qc_defaults_to_two_lanes(tmp_path, monkeypatch):
     assert captured["lanes"] == 2                            # default = 2
     reg.dispatch("run_qc", {"path": str(f), "lanes": 5, "output_dir": out_dir})  # explicit honored
     assert captured["lanes"] == 5
+
+
+def _write_rows(p, header, rows):
+    with open(p, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(header)
+        w.writerows(rows)
+
+
+def test_inspect_input_autodetects_non_id_column(tmp_path):
+    # A file whose id column is 'Channel URL' (no literal 'id') still works, and
+    # the report names the auto-detected column.
+    f = tmp_path / "channels.csv"
+    _write_rows(f, ["name", "channel url"], [
+        ["Noodah05", "https://www.youtube.com/channel/UCECWJfpmSWeaZ2fbb0rlq_g"],
+        ["JEV", "https://www.youtube.com/channel/UC7trU46U_9XPDtMnDbiDPUQ"],
+    ])
+    out = ToolRegistry(_ctx(tmp_path)).dispatch("inspect_input", {"path": str(f)})
+    assert out["total"] == 2 and out["channels"] == 2
+    assert out["detected_column"] == "channel url"
+
+
+def test_inspect_input_no_id_column_gives_helpful_error(tmp_path):
+    # No id-like column → a helpful error naming the columns, not a crash.
+    f = tmp_path / "notes.csv"
+    _write_rows(f, ["name", "notes"], [["Noodah05", "cool channel"]])
+    out = ToolRegistry(_ctx(tmp_path)).dispatch("inspect_input", {"path": str(f)})
+    assert "error" in out
+    assert "column" in out["error"].lower()

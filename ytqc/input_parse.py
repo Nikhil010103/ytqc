@@ -46,6 +46,16 @@ _RE_URL_SHORTS = re.compile(rf"youtube\.com/shorts/({_VIDEO_ID})", re.I)
 _TYPES = ("channel", "video")
 _HEADER_TOKENS = {"id", "type", "label", "name", "channelid", "videoid", "url"}
 
+# Header names that SUGGEST a column of ids/links (a small tie-break boost during
+# auto-detection). Content still has to look like ids — a suggestive name alone
+# never wins. Compared case-insensitively against stripped headers.
+_ID_COLUMN_HINTS = {
+    "id", "ids", "url", "urls", "link", "links",
+    "channel", "channels", "channel_id", "channelid", "channel url", "channel_url",
+    "video", "videos", "video_id", "videoid", "video url", "video_url",
+    "handle", "handles",
+}
+
 
 @dataclass
 class ParseReport:
@@ -53,14 +63,18 @@ class ParseReport:
     videos: int = 0
     n_deduped: int = 0                       # how many duplicate ids were dropped
     unrecognized: list[str] = field(default_factory=list)  # lines/tokens with no id
+    detected_column: Optional[str] = None    # for file input: the auto-picked id column
 
     def as_dict(self) -> dict:
-        return {
+        d = {
             "channels": self.channels,
             "videos": self.videos,
             "deduped": self.n_deduped,
             "unrecognized": self.unrecognized,
         }
+        if self.detected_column is not None:
+            d["detected_column"] = self.detected_column
+        return d
 
 
 def _norm_type(raw: Optional[str]) -> Optional[str]:
@@ -223,3 +237,89 @@ def _add(seen: dict, report: ParseReport, cid: str, type_: str,
             seen[cid].label = label
         return
     seen[cid] = InputItem(id=cid, type=type_, label=label)
+
+
+def _blank(v) -> bool:
+    """A spreadsheet cell that carries no value (empty, or pandas' 'nan' string)."""
+    s = str(v).strip()
+    return not s or s.lower() == "nan"
+
+
+# ── spreadsheet (CSV/Excel) input: auto-detect & normalize the id column ──────
+
+def detect_id_column(columns: list[str], rows: list[dict]) -> Optional[str]:
+    """Pick the column that holds YouTube ids/URLs/@handles, or None.
+
+    A column literally named 'id' wins outright (back-compat). Otherwise score
+    each column by the fraction of its non-empty cells that parse to a canonical
+    id (via the same extractors pasted text uses), plus a small boost for an
+    id-suggesting header name; the best column at/above a confidence floor wins.
+    Deterministic — no LLM. Returns None when nothing looks like ids (the caller
+    then raises a helpful 'which column?' error)."""
+    norm = {c: str(c).strip().lower() for c in columns}
+    for c in columns:                        # a literal 'id' column always wins
+        if norm[c] == "id":
+            return c
+    best, best_score = None, 0.0
+    for c in columns:
+        cells = [str(r.get(c, "")) for r in rows]
+        cells = [x.strip() for x in cells if not _blank(x)][:200]   # sample cap
+        if not cells:
+            continue
+        hits = sum(1 for x in cells
+                   if _token_id(x) is not None or _extract_freeform(x))
+        score = hits / len(cells)
+        if norm[c] in _ID_COLUMN_HINTS:
+            score += 0.15                    # suggestive header: tie-break only
+        if score > best_score:
+            best, best_score = c, score
+    return best if best_score >= 0.5 else None
+
+
+def items_from_rows(rows: list[dict], id_col: str, type_col: Optional[str] = None,
+                    label_col: Optional[str] = None,
+                    default_type: Optional[str] = None,
+                    trust_raw: bool = False
+                    ) -> tuple[list[InputItem], ParseReport]:
+    """Build (deduped items, ParseReport) from spreadsheet rows using the detected
+    id column. Each id cell is normalized with the SAME extractors as pasted text
+    (a cell may be a bare id, a URL, an @handle, or even a messy multi-id string);
+    an explicit type/label column refines type/label; dedupe by canonical id.
+
+    trust_raw=True (used for an explicitly-named 'id' column) keeps a cell that
+    doesn't parse to a canonical id VERBATIM instead of flagging it unrecognized —
+    preserving the historical contract that an 'id' column is taken as given."""
+    report = ParseReport()
+    seen: dict[str, InputItem] = {}
+    for r in rows:
+        raw = str(r.get(id_col, "")).strip()
+        if _blank(raw):
+            continue
+        line_type = (_norm_type(str(r.get(type_col, "")).strip())
+                     if type_col else None)
+        label = None
+        if label_col and not _blank(r.get(label_col, "")):
+            label = str(r.get(label_col)).strip()
+
+        hit = _token_id(raw)
+        if hit is not None:
+            cid, forced = hit
+            _add(seen, report, cid,
+                 _resolve_type(cid, forced, line_type, default_type), label)
+            continue
+        found = _extract_freeform(raw)       # messy cell (full URL / multiple ids)
+        if found:
+            for cid, forced in found:
+                _add(seen, report, cid,
+                     _resolve_type(cid, forced, line_type, default_type), label)
+            continue
+        if trust_raw:                        # explicit 'id' column → take as given
+            _add(seen, report, raw,
+                 _resolve_type(raw, None, line_type, default_type), label)
+        else:
+            report.unrecognized.append(raw)
+
+    items = list(seen.values())
+    report.channels = sum(1 for i in items if i.type == "channel")
+    report.videos = sum(1 for i in items if i.type == "video")
+    return items, report

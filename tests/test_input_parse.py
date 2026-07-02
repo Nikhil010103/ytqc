@@ -1,5 +1,5 @@
 """Deterministic input normalization — pure, no I/O, no monkeypatch."""
-from ytqc.input_parse import parse_items
+from ytqc.input_parse import detect_id_column, items_from_rows, parse_items
 
 PASTE = """UCECWJfpmSWeaZ2fbb0rlq_g,channel,US - Noodah05
 UC7trU46U_9XPDtMnDbiDPUQ,channel,US - JEV
@@ -112,4 +112,72 @@ def test_single_line_comma_list_extracts_all():
     items, rep = parse_items(text, "channel")
     assert len(items) == 3
     assert {i.type for i in items} == {"channel"}
+    assert rep.unrecognized == []
+
+
+# ── spreadsheet id-column auto-detection (files as smart as paste) ────────────
+
+def test_detect_literal_id_column_always_wins():
+    rows = [{"id": "UCECWJfpmSWeaZ2fbb0rlq_g", "name": "Noodah05"}]
+    assert detect_id_column(["id", "name"], rows) == "id"
+
+
+def test_detect_id_column_by_content_url():
+    rows = [
+        {"name": "Noodah05", "channel url": "https://www.youtube.com/channel/UCECWJfpmSWeaZ2fbb0rlq_g"},
+        {"name": "JEV", "channel url": "https://www.youtube.com/channel/UC7trU46U_9XPDtMnDbiDPUQ"},
+    ]
+    assert detect_id_column(["name", "channel url"], rows) == "channel url"
+
+
+def test_detect_id_column_handles_and_bare_ids():
+    rows = [{"who": "@Noodah05"}, {"who": "UCECWJfpmSWeaZ2fbb0rlq_g"}]
+    assert detect_id_column(["who"], rows) == "who"
+
+
+def test_detect_id_column_none_when_no_ids():
+    rows = [{"name": "Noodah05", "notes": "cool channel"},
+            {"name": "JEV", "notes": "gaming"}]
+    assert detect_id_column(["name", "notes"], rows) is None
+
+
+def test_items_from_rows_normalizes_urls_handles_bare():
+    rows = [
+        {"channel url": "https://www.youtube.com/channel/UCECWJfpmSWeaZ2fbb0rlq_g"},
+        {"channel url": "https://www.youtube.com/@Noodah05"},
+        {"channel url": "UC7trU46U_9XPDtMnDbiDPUQ"},
+    ]
+    items, rep = items_from_rows(rows, "channel url", default_type="channel")
+    assert {i.id for i in items} == {
+        "UCECWJfpmSWeaZ2fbb0rlq_g", "@Noodah05", "UC7trU46U_9XPDtMnDbiDPUQ"}
+    assert {i.type for i in items} == {"channel"}      # UC + handle are channels
+    assert rep.channels == 3 and rep.videos == 0
+
+
+def test_items_from_rows_honors_type_and_label_columns():
+    rows = [{"link": "dQw4w9WgXcQ", "type": "video", "label": "Rick"}]
+    items, _ = items_from_rows(rows, "link", type_col="type", label_col="label",
+                               default_type="channel")
+    assert len(items) == 1
+    assert items[0].id == "dQw4w9WgXcQ" and items[0].type == "video"
+    assert items[0].label == "Rick"
+
+
+def test_items_from_rows_dedupes_and_reports_unrecognized():
+    rows = [
+        {"col": "UCECWJfpmSWeaZ2fbb0rlq_g"},
+        {"col": "UCECWJfpmSWeaZ2fbb0rlq_g"},            # duplicate
+        {"col": "just a name, no id"},                  # no id → unrecognized (strict)
+    ]
+    items, rep = items_from_rows(rows, "col", default_type="channel")
+    assert len(items) == 1 and rep.n_deduped == 1
+    assert rep.unrecognized == ["just a name, no id"]
+
+
+def test_items_from_rows_trust_raw_keeps_noncanonical_id():
+    # An explicit 'id' column is taken as given (back-compat): a non-canonical
+    # value like 'v1' is kept verbatim rather than dropped as unrecognized.
+    rows = [{"id": "v1", "type": "video"}]
+    items, rep = items_from_rows(rows, "id", type_col="type", trust_raw=True)
+    assert len(items) == 1 and items[0].id == "v1" and items[0].type == "video"
     assert rep.unrecognized == []

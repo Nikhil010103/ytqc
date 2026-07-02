@@ -101,8 +101,9 @@ def _est_minutes(items: list) -> float:
 def _items_from(path: Optional[str], ids: Optional[str], item_type: Optional[str]):
     """Resolve a tool's path/ids args into (items, ParseReport|None).
 
-    - path: canonical file read (pandas) is the source of truth — never drops
-      rows. Returns no report (file input is already structured).
+    - path: CSV/Excel read (pandas); the id column is auto-detected and its
+      cells normalized like pasted text. Returns a ParseReport too (which column
+      was detected, what was deduped/unrecognized).
     - ids: pasted/free text → deterministic normalization (extract canonical
       YouTube ids/urls/@handles, dedupe, ignore noise) + a report the caller can
       surface ("found N unique, ignored M").
@@ -110,7 +111,8 @@ def _items_from(path: Optional[str], ids: Optional[str], item_type: Optional[str
     from ytqc.cli import _read_input
     from ytqc.input_parse import parse_items
     if path:
-        return _read_input(_resolve_path(path)), None
+        items, report, _id_col = _read_input(_resolve_path(path), default_type=item_type)
+        return items, report
     if ids:
         return parse_items(ids, default_type=item_type)
     return None, None
@@ -240,6 +242,8 @@ def inspect_input(ctx: AgentContext, path: str = None, ids: str = None,
     if report is not None:
         out["deduped"] = report.n_deduped
         out["unrecognized"] = report.unrecognized
+        if report.detected_column is not None:
+            out["detected_column"] = report.detected_column
     return out
 
 
