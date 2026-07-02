@@ -8,22 +8,134 @@ Point it at a list of YouTube channels/videos. It opens each one in a real brows
 
 ## 🚀 Quick start
 
+If you already have **Python 3.10 or newer** and **git**:
+
 ```bash
 pipx install "git+https://github.com/Nikhil010103/ytqc.git"   # or: pip install "git+https://github.com/Nikhil010103/ytqc.git"
 ytqc setup
 ```
 
-That's it — no token, no account, no SSH key. The two commands install `ytqc` and run the setup wizard (installs Homebrew, Ollama, Chrome, and the browser bridge; pauses for the 3 by-hand steps below).
+No token, no account, no SSH key. If you're on a fresh machine (nothing installed), or you're not sure about Python/admin rights, follow the full **[end-to-end install](#-full-install-assume-nothing) below** instead — it covers every step.
 
-**Pin a specific version:**
+**Pin a specific version** · **Update:**
 ```bash
-pipx install "git+https://github.com/Nikhil010103/ytqc.git@v0.1.0"
+pipx install "git+https://github.com/Nikhil010103/ytqc.git@v0.1.0"   # pin
+pipx upgrade ytqc                                                    # update
 ```
 
-**Updating:**
+---
+
+## 🧭 Full install (assume nothing)
+
+Pick the path that matches your machine. **The only hard requirement is Python 3.10+** — the tool will not install on 3.9 or older.
+
+> **Do you have admin (can you install apps / type your Mac password)?**
+> • **Yes** → [Path A: one-command bootstrap](#path-a--admin-mac--one-command-bootstrap) (easiest).
+> • **No** (locked-down work laptop) → [Path B: no-admin install](#path-b--no-admin-mac).
+> • **Windows** → [Path C: Windows](#path-c--windows).
+
+### Check what you have first
+
 ```bash
-pipx upgrade ytqc
+python3 --version      # need 3.10+  (3.9 will NOT work)
+git --version          # any version is fine
+uname -m               # arm64 = Apple Silicon, x86_64 = Intel  (matters for downloads below)
 ```
+
+---
+
+### Path A — admin Mac → one-command bootstrap
+
+One command installs **everything** (Homebrew → git, Python 3.12, pipx, Chrome → ytqc), then runs setup. You'll be asked for your Mac password (that's the "admin" part).
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/Nikhil010103/ytqc/main/installer/bootstrap.sh" | bash
+```
+
+That's it — skip to [the 3 by-hand steps](#-the-3-by-hand-steps-happen-inside-ytqc-setup). If it prints **"Need sudo access … needs to be an Administrator"**, you don't have admin — use **[Path B](#path-b--no-admin-mac)** instead.
+
+---
+
+### Path B — no-admin Mac
+
+No admin, no Homebrew, and your system Python may be too old (3.9). This path installs everything **inside your home folder** — no password needed. Run each block in order.
+
+**B1. Install a modern Python (via Miniforge — no admin).** Homebrew and the python.org installer both need admin; Miniforge does not.
+
+```bash
+# Apple Silicon (arm64). For Intel, change arm64 → x86_64 in the URL.
+curl -fsSL "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh" -o ~/miniforge.sh
+bash ~/miniforge.sh -b -p "$HOME/miniforge3"      # -b = unattended, no prompts
+export PATH="$HOME/miniforge3/bin:$PATH"
+python --version                                  # should print 3.12.x or newer
+```
+
+**B2. Install pipx and put it on PATH.** (Note the spelling: `ensurepath`.)
+
+```bash
+python -m pip install --user pipx
+python -m pipx ensurepath
+# Make miniforge's python AND pipx's bin dir permanent for new terminals:
+echo 'export PATH="$HOME/miniforge3/bin:$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+pipx --version                                    # confirms pipx is found
+```
+
+**B3. Install ytqc.**
+
+```bash
+pipx install "git+https://github.com/Nikhil010103/ytqc.git"
+```
+
+**B4. Install Ollama manually (the AI model — no admin).** `ytqc setup` tries to install this via Homebrew, which fails without admin, so do it by hand first. Ollama's app installs fine into your home folder.
+
+```bash
+curl -fsSL "https://ollama.com/download/Ollama-darwin.zip" -o ~/Downloads/Ollama.zip
+mkdir -p ~/Applications
+unzip -o ~/Downloads/Ollama.zip -d ~/Applications/
+open ~/Applications/Ollama.app                    # starts the server (menu-bar icon)
+# If macOS blocks it as "unidentified developer", clear quarantine then re-open:
+#   xattr -dr com.apple.quarantine ~/Applications/Ollama.app && open ~/Applications/Ollama.app
+
+# Put the ollama CLI on PATH for this + future terminals:
+echo 'export PATH="$HOME/Applications/Ollama.app/Contents/Resources:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+ollama --version                                  # confirms the CLI is found
+ollama signin                                     # opens browser → sign in (free account)
+#   If "unknown command signin": click the Ollama menu-bar icon → Sign in instead.
+```
+
+**B5. Chrome.** If Chrome is already installed, `ytqc setup` will detect it. If not and you lack admin, download it from <https://www.google.com/chrome/> and drag **Google Chrome.app** into `~/Applications` (a personal folder, no admin needed).
+
+**B6. Run setup.**
+
+```bash
+ytqc setup
+```
+
+Then finish [the 3 by-hand steps](#-the-3-by-hand-steps-happen-inside-ytqc-setup) below and press Enter to re-check.
+
+---
+
+### Path C — Windows
+
+Run in **PowerShell**. This uses `winget` (built into Windows 10/11) instead of Homebrew.
+
+```powershell
+irm "https://raw.githubusercontent.com/Nikhil010103/ytqc/main/installer/bootstrap.ps1" | iex
+```
+
+If you'd rather do it by hand:
+
+```powershell
+python -m pip install --user pipx
+python -m pipx ensurepath
+# close & reopen PowerShell, then:
+pipx install "git+https://github.com/Nikhil010103/ytqc.git"
+ytqc setup
+```
+
+> kimi-webbridge (the browser bridge) has no Windows auto-installer yet — the wizard guides that one step; everything else installs automatically.
 
 ---
 
@@ -36,6 +148,14 @@ The wizard runs on its own, pauses to prompt you for each, then re-checks and fi
 | 1️⃣ | `ollama signin` | the default cloud model is tied to your free Ollama account |
 | 2️⃣ | Restart Chrome once | so the auto-installed extensions load |
 | 3️⃣ | Sign into YouTube in Chrome | QC opens real pages. Use a dedicated account — YouTube Premium skips ~20s of ad waits per video. |
+
+To fully restart Chrome from the terminal (equivalent to Cmd+Q, then reopen):
+
+```bash
+osascript -e 'quit app "Google Chrome"' && open -a "Google Chrome"
+```
+
+Then, in the Chrome window, sign into YouTube and click the **kimi-webbridge extension icon** once so it attaches. Back at the `ytqc setup` prompt, press **Enter** to re-check.
 
 ✅ Re-run `ytqc setup` anytime — it's idempotent and only fixes what's still missing. Run `ytqc doctor` to check everything is connected, or `ytqc guide` for the full in-tool walkthrough.
 
@@ -130,6 +250,17 @@ Use any OpenAI-compatible API. Non-vision providers skip frame analysis with a c
 <details>
 <summary>🩺 Troubleshooting</summary>
 
+**Install-time issues**
+
+- **`Need sudo access on macOS … needs to be an Administrator`** (Homebrew) — your account isn't an admin, so the one-command bootstrap can't install Homebrew. Use the no-admin path: **[Path B](#path-b--no-admin-mac)**.
+- **`command not found: pipx`** right after installing it — `~/.local/bin` isn't on PATH yet. Run `python -m pipx ensurepath` (note the spelling — not `enurepath`), then **close and reopen the terminal** (or `source ~/.zshrc`). The `ensurepath` step must run *before* you reopen.
+- **Python is 3.9 (or older)** — ytqc needs **3.10+** and will fail to install on 3.9. Install a newer Python first: admin → `brew install python`; no admin → Miniforge, see **[B1](#path-b--no-admin-mac)**.
+- **`ERROR: Package 'ytqc' requires a different Python`** — same cause: pipx/pip is using an old interpreter. Install ytqc with your 3.10+ python (e.g. `python3.12 -m pip install --user pipx` then `pipx install …`).
+- **`llm endpoint: unreachable — [Errno 61] Connection refused`** at the end of setup — Ollama isn't installed/running (Homebrew install was skipped or failed). Install Ollama manually (**[B4](#path-b--no-admin-mac)**), run `ollama signin`, make sure its menu-bar app is running, then re-run `ytqc setup`.
+- **`ollama: command not found`** after installing the app — the CLI isn't on PATH. Add it: `export PATH="$HOME/Applications/Ollama.app/Contents/Resources:$PATH"` (adjust if you moved the app), or just launch the app once.
+
+**Runtime issues**
+
 - **Re-run `ytqc setup`** — idempotent; only fixes what's missing.
 - **`ytqc doctor`** (or `/check` in chat) — shows whether the browser bridge + AI model are reachable.
 - **"browser NOT connected"** — open Chrome, make sure the kimi-webbridge extension is on, and focus the window. If extensions didn't load, fully quit Chrome (`Cmd+Q`) and reopen it once.
@@ -148,7 +279,7 @@ Use any OpenAI-compatible API. Non-vision providers skip frame analysis with a c
 git clone https://github.com/Nikhil010103/ytqc.git
 cd ytqc
 pip install -e ".[dev]"
-pytest tests/            # 297 tests — validator XOR matrix, sampler math, safety gates,
+pytest tests/            # validator XOR matrix + policy floor, sampler math, safety gates,
                          # JSON salvage, channel aggregation, setup/anti-hang robustness
 ```
 
