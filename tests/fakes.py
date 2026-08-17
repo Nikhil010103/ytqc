@@ -70,11 +70,11 @@ def good_content_output(**overrides: Any) -> dict:
             "triggered_categories": [],
             "explanation": "Clean automotive content with no triggers.",
         },
-        "tier_1": "Automobiles",
+        "tier_1": "Automobile",
         "tier_2": "motorcycle reviews",
         "tier_classification_reasoning": (
             "YouTube Category 'Autos & Vehicles' and tag 'ninja zx-4r' "
-            "→ tier_1=Automobiles, tier_2=motorcycle reviews."
+            "→ tier_1=Automobile, tier_2=motorcycle reviews."
         ),
         "keywords": ["kawasaki", "ninja zx-4r", "track day", "motorcycle review", "inline four"],
         "language": "en",
@@ -286,6 +286,8 @@ _LABEL_TO_CONSTANT: dict[str, str] = {
     "likes": J.LIKES,
     "channel_about": J.CHANNEL_ABOUT,
     "channel_videos": J.CHANNEL_VIDEOS,
+    "channel_tabs": J.CHANNEL_TABS,
+    "channel_shorts": J.CHANNEL_SHORTS,
     "transcript_open": J.TRANSCRIPT_OPEN,
     "transcript_scrape": J.TRANSCRIPT_SCRAPE,
     "watch_ready": J.WATCH_READY,
@@ -314,9 +316,9 @@ class FakeKimiClient:
 
     Recognised labels (see _LABEL_TO_CONSTANT / _PREFIX_LABELS):
       player_response, likes, comments, channel_about, channel_videos,
-      transcript_open, transcript_scrape, watch_ready, channel_ready,
-      frame_ready, frame_seek, frame_grab, ad_skip, player_quality,
-      player_pause.
+      channel_tabs, channel_shorts, transcript_open, transcript_scrape,
+      watch_ready, channel_ready, frame_ready, frame_seek, frame_grab,
+      ad_skip, player_quality, player_pause.
 
     navigate()/scroll()/item_pause()/close() are no-ops (navigate records the
     url). screenshot_b64() returns ``screenshot`` (default a tiny JPEG b64).

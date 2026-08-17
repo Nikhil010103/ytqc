@@ -235,6 +235,49 @@ JSON.stringify((() => {
   return {n: vids.length, vids: vids.slice(0, 30)};
 })())"""
 
+# Channel tab inventory — which tabs the channel actually publishes (Home,
+# Videos, Shorts, Live, Podcasts, Playlists, Posts, Store…). Read from the
+# rendered tab strip in ytInitialData, so it needs no extra navigation. Used to
+# decide whether a channel is Shorts-only (Shorts tab present, no long-form).
+CHANNEL_TABS = DEEP_FIND + r"""
+JSON.stringify((() => {
+  const tabs = window.__ytqcFind(window.ytInitialData, 'tabRenderer')
+    .map(t => (((t.title) || '') + '').trim())
+    .filter(Boolean);
+  const seen = []; tabs.forEach(t => { if (!seen.includes(t)) seen.push(t); });
+  return {n: seen.length, tabs: seen};
+})())"""
+
+# /shorts tab catalog. Shorts never appear in the /videos grid, so a Shorts-only
+# channel scrapes as an empty catalog without this. 2026 primary:
+# shortsLockupViewModel (title in overlayMetadata); legacy: reelItemRenderer.
+CHANNEL_SHORTS = DEEP_FIND + r"""
+JSON.stringify((() => {
+  const F = window.__ytqcFind;
+  const seen = new Set(); const out = [];
+  F(window.ytInitialData, 'shortsLockupViewModel').forEach(s => {
+    const om = s.overlayMetadata || {};
+    const ep = F(s.onTap || {}, 'reelWatchEndpoint')[0] || {};
+    const id = ep.videoId || String(s.entityId || '').replace(/^shorts-shelf-item-/, '');
+    const title = ((om.primaryText || {}).content) || '';
+    if (!id || seen.has(id) || !title) return;
+    seen.add(id);
+    out.push({id: id, title: title,
+              views: ((om.secondaryText || {}).content) || '', age: ''});
+  });
+  if (!out.length) {
+    F(window.ytInitialData, 'reelItemRenderer').forEach(r => {
+      const id = r.videoId || '';
+      const title = ((r.headline || {}).simpleText) || '';
+      if (!id || seen.has(id) || !title) return;
+      seen.add(id);
+      out.push({id: id, title: title,
+                views: ((r.viewCountText || {}).simpleText) || '', age: ''});
+    });
+  }
+  return {n: out.length, vids: out};
+})())"""
+
 # Full catalog read: ytInitialData (page 1, ~30) + YouTube continuation data API
 # (/youtubei/v1/browse) for up to __PAGES__ more pages (~30 each). Data-only — no
 # scroll/visibility dependency (the grid virtualizes and infinite-scroll does NOT

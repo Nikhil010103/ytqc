@@ -16,6 +16,7 @@ from ytqc.taxonomy import (
     PROMPT_TRIGGER_TO_CATEGORY,
     RISK_LEVELS,
     SAFETY_CATEGORIES,
+    TIER_1_ALIASES,
     TIER_1_CATEGORIES,
     risk_at_least,
 )
@@ -37,6 +38,12 @@ def normalize(llm_result: dict, item_id: str = "?") -> AnalystOutput:
         # Case-insensitive recovery before giving up — LLM sometimes lowercases.
         lower_map = {c.lower(): c for c in TIER_1_CATEGORIES}
         tier_1 = lower_map.get(tier_1_raw.lower())
+    if tier_1_raw and tier_1 is None:
+        # Near-miss recovery: a common synonym / an older vocabulary value maps
+        # onto the QC team's list rather than failing the record outright.
+        tier_1 = TIER_1_ALIASES.get(tier_1_raw.lower())
+        if tier_1 is not None:
+            log.info("tier_1 %r recovered via alias → %s (%s)", tier_1_raw, tier_1, item_id)
     if tier_1 is None:
         raise ValidationError(f"unrecoverable tier_1 {tier_1_raw!r} for {item_id}")
 
@@ -99,9 +106,11 @@ def normalize(llm_result: dict, item_id: str = "?") -> AnalystOutput:
         mapped = PROMPT_TRIGGER_TO_CATEGORY.get(cat_s.lower(), cat_s)
         if mapped in SAFETY_CATEGORIES and mapped not in triggered:
             triggered.append(mapped)
-    # Hardcoded tier_1 policy floor: News/politics and Religion are always
-    # brand-unsafe regardless of the LLM verdict — floor risk and record the
-    # policy category so the row can never be marked safe for these placements.
+    # Hardcoded tier_1 policy floor (see HARDCODED_UNSAFE_TIER1 — empty under the
+    # current mapping, which has no News/Religion tier): when a tier_1 is listed
+    # there, floor its risk and record the policy category so the row can never
+    # be marked safe for that placement. News/politics/religion are floored by
+    # the prompt rule + safety categories instead.
     floor = HARDCODED_UNSAFE_TIER1.get(tier_1)
     if floor is not None:
         min_risk, policy_category = floor

@@ -19,12 +19,12 @@ from tests.fakes import FakeLLMClient, good_judge_output
 # helpers
 # ──────────────────────────────────────────────────────────────────────────
 def _analyst(**ov) -> AnalystOutput:
-    """A clean baseline AnalystOutput (Automobiles / en / risk none)."""
+    """A clean baseline AnalystOutput (Automobile / en / risk none)."""
     base = dict(
         summary="Track-day review.",
-        tier_1="Automobiles",
+        tier_1="Automobile",
         tier_2="motorcycle reviews",
-        tier_classification_reasoning="Tag ninja zx-4r -> Automobiles.",
+        tier_classification_reasoning="Tag ninja zx-4r -> Automobile.",
         language="en",
         kids_age_group=None,
         qc_notes="",
@@ -79,11 +79,11 @@ def test_kids_visual_conflict_raises_tier_1():
         visual_kids_signals={"present": True,
                              "signals": ["bright cartoon", "nursery rhyme", "toys"]},
     )
-    conflicts = detect_conflicts(_analyst(tier_1="Automobiles"), vision, None)
+    conflicts = detect_conflicts(_analyst(tier_1="Automobile"), vision, None)
     tier_conf = [c for c in conflicts if c["field"] == "tier_1"]
     assert len(tier_conf) == 1
     c = tier_conf[0]
-    assert c["content_analyst"] == "Automobiles"
+    assert c["content_analyst"] == "Automobile"
     assert c["vision_analyst"].startswith("Kids (visual kids signals:")
     # only the first 3 signals are listed
     assert "toys" in c["vision_analyst"]
@@ -153,13 +153,13 @@ def test_language_no_conflict_when_visible_language_missing():
 # ──────────────────────────────────────────────────────────────────────────
 def test_draft_majority_dispute_conflict():
     """tier_1 != draft tier_1 with vote_share >= 0.5 -> majority dispute."""
-    draft = {"tier_1": "Gaming", "tier_1_vote_share": 0.6, "tier_votes": {"Gaming": 3, "Automobiles": 2}}
-    out = _analyst(tier_1="Automobiles", qc_notes="synth note")
+    draft = {"tier_1": "Gaming", "tier_1_vote_share": 0.6, "tier_votes": {"Gaming": 3, "Automobile": 2}}
+    out = _analyst(tier_1="Automobile", qc_notes="synth note")
     conflicts = detect_conflicts(out, None, draft)
     disputes = [c for c in conflicts if c["field"] == "tier_1" and "draft_aggregate" in c]
     assert len(disputes) == 1
     c = disputes[0]
-    assert c["synthesizer"] == "Automobiles"
+    assert c["synthesizer"] == "Automobile"
     assert "Gaming" in c["draft_aggregate"]
     assert "0.6" in c["draft_aggregate"]
     assert c["synthesizer_notes"] == "synth note"
@@ -167,12 +167,12 @@ def test_draft_majority_dispute_conflict():
 
 def test_draft_no_majority_branch_conflict():
     """vote_share < 0.5 -> 'no majority' conflict descriptor."""
-    draft = {"tier_1": "Gaming", "tier_1_vote_share": 0.4, "tier_votes": {"Gaming": 2, "Automobiles": 2, "Music": 1}}
+    draft = {"tier_1": "Gaming", "tier_1_vote_share": 0.4, "tier_votes": {"Gaming": 2, "Automobile": 2, "Music": 1}}
     out = _analyst(tier_1="Gaming")  # matches draft, so the majority branch won't fire
     conflicts = detect_conflicts(out, None, draft)
     no_maj = [c for c in conflicts if c.get("issue") == "no majority among sampled-video briefs"]
     assert len(no_maj) == 1
-    assert no_maj[0]["votes"] == {"Gaming": 2, "Automobiles": 2, "Music": 1}
+    assert no_maj[0]["votes"] == {"Gaming": 2, "Automobile": 2, "Music": 1}
     assert no_maj[0]["synthesizer"] == "Gaming"
     # The majority-dispute branch must NOT have fired (tier_1 == draft tier_1).
     assert not [c for c in conflicts if "draft_aggregate" in c]
@@ -180,8 +180,8 @@ def test_draft_no_majority_branch_conflict():
 
 def test_draft_agreement_no_conflict():
     """Matching tier_1 and a clear majority -> no draft conflict."""
-    draft = {"tier_1": "Automobiles", "tier_1_vote_share": 0.8, "tier_votes": {"Automobiles": 4}}
-    conflicts = detect_conflicts(_analyst(tier_1="Automobiles"), None, draft)
+    draft = {"tier_1": "Automobile", "tier_1_vote_share": 0.8, "tier_votes": {"Automobile": 4}}
+    conflicts = detect_conflicts(_analyst(tier_1="Automobile"), None, draft)
     assert conflicts == []
 
 
@@ -190,7 +190,7 @@ def test_draft_missing_vote_share_defaults_no_majority_branch():
     (so a mismatch does NOT fire that branch), and the no-majority branch uses
     1.0 (so it also does not fire). Confirms the two distinct defaults."""
     draft = {"tier_1": "Gaming"}  # no vote share at all
-    out = _analyst(tier_1="Automobiles")
+    out = _analyst(tier_1="Automobile")
     conflicts = detect_conflicts(out, None, draft)
     # majority branch needs vote_share >= 0.5; default .get(...,0) -> skip
     assert not [c for c in conflicts if "draft_aggregate" in c]
@@ -207,7 +207,7 @@ def test_multiple_conflicts_accumulate():
     )
     draft = {"tier_1": "Gaming", "tier_1_vote_share": 0.7}
     out = _analyst(
-        tier_1="Automobiles",
+        tier_1="Automobile",
         language="en",
         brand_safety=BrandSafety(is_safe=True, risk_level="none"),
     )
@@ -238,7 +238,7 @@ def test_adjudicate_applies_resolved_fields_and_rederives_is_safe():
     llm = FakeLLMClient(by_system={"final reconciliation judge": resolved})
 
     out = _analyst(
-        tier_1="Automobiles", tier_2="motorcycle reviews", language="en",
+        tier_1="Automobile", tier_2="motorcycle reviews", language="en",
         kids_age_group=None, qc_notes="initial",
         brand_safety=BrandSafety(is_safe=True, risk_level="none"),
     )
@@ -279,9 +279,9 @@ def test_adjudicate_empty_resolved_fields_only_appends_notes():
     """No resolved_fields -> classification untouched; judge_notes appended."""
     resolved = good_judge_output(resolved_fields={}, judge_notes="Analyst upheld.")
     llm = FakeLLMClient(by_system={"final reconciliation judge": resolved})
-    out = _analyst(tier_1="Automobiles", language="en", qc_notes="")
+    out = _analyst(tier_1="Automobile", language="en", qc_notes="")
     result = adjudicate(llm, out, conflicts=[{"field": "tier_1"}])
-    assert result.tier_1 == "Automobiles"
+    assert result.tier_1 == "Automobile"
     assert result.language == "en"
     assert result.qc_notes == "Judge: Analyst upheld."  # leading ' |' stripped
 
@@ -300,7 +300,7 @@ def test_adjudicate_sends_judge_system_prompt_and_conflict_report():
     routed system prompt is the JUDGE_SYSTEM (verified via by_system match)."""
     resolved = good_judge_output(resolved_fields={})
     llm = FakeLLMClient(by_system={"final reconciliation judge": resolved})
-    conflicts = [{"field": "tier_1", "content_analyst": "Automobiles"}]
+    conflicts = [{"field": "tier_1", "content_analyst": "Automobile"}]
     adjudicate(llm, _analyst(), conflicts)
     assert llm.calls == 1
     system, user, images = llm.history[0]
@@ -321,13 +321,13 @@ def test_adjudicate_llm_exception_leaves_output_unchanged():
 
     llm = FakeLLMClient(router=boom)
     out = _analyst(
-        tier_1="Automobiles", tier_2="motorcycle reviews", language="en",
+        tier_1="Automobile", tier_2="motorcycle reviews", language="en",
         qc_notes="original notes",
         brand_safety=BrandSafety(is_safe=True, risk_level="none"),
     )
     result = adjudicate(llm, out, conflicts=[{"field": "tier_1"}])
     assert result is out
-    assert result.tier_1 == "Automobiles"
+    assert result.tier_1 == "Automobile"
     assert result.tier_2 == "motorcycle reviews"
     assert result.language == "en"
     assert result.qc_notes == "original notes"

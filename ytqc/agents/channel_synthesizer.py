@@ -39,6 +39,14 @@ def synthesize_channel(
         f"{titles_block}\n"
         "--- END UNTRUSTED TITLES ---"
     )
+    if extract.is_shorts_only:
+        # Titles + thumbnails came from /shorts: say so, or the model reads the
+        # short, hook-heavy titles as a thin/low-evidence long-form catalog.
+        user += ("\n\n== CATALOG FORMAT ==\nThis channel publishes SHORTS ONLY "
+                 "(vertical <60s videos; it has no long-form uploads). The titles "
+                 "and thumbnails above are its Shorts — judge the channel on them "
+                 "normally; short, hook-heavy titles are the format's norm, not a "
+                 "sign of thin evidence.")
     if vision_digest:
         user += f"\n\n== VISUAL EVIDENCE (from /videos page thumbnails) ==\n{vision_digest}"
 

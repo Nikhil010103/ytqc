@@ -124,12 +124,44 @@ def _read_input(path: str, default_type: Optional[str] = None):
     return items, report, id_col
 
 
+def _open_run_state(out_dir: str, items: list, input_path: Optional[str] = None,
+                    fresh: bool = False, console_: Optional[Console] = None):
+    """Continue this list's unfinished run, or start a new one.
+
+    A big list rarely survives in one sitting (captcha halt, Ctrl-C, a closed
+    laptop), and re-submitting the same file used to start a second run from
+    zero. Keyed on a fingerprint of the item ids, so the same list resumes even
+    from a renamed/copied sheet, while a changed list starts fresh."""
+    from ytqc.pipeline.state import RunState, fingerprint_items
+    out = console_ or console
+    fp = fingerprint_items(items)
+    prior = None if fresh else RunState.find_resumable(out_dir, fp)
+    if prior:
+        state = RunState.resume(out_dir, prior)
+        done = state.done_count()
+        out.print(f"[green]resuming run[/] [bold]{prior}[/] — "
+                  f"{done}/{len(items)} already done, continuing with the rest "
+                  f"[dim](--fresh to start over)[/]")
+    else:
+        # Re-QC of an already-finished list is allowed, but say so: at a few
+        # thousand channels an accidental repeat costs hours of browser time.
+        done_before = None if fresh else RunState.find_completed(out_dir, fp)
+        if done_before:
+            out.print(f"[yellow]note:[/] this exact list already finished as run "
+                      f"[bold]{done_before}[/] — starting a NEW run and re-doing all "
+                      f"{len(items)} item(s). Ctrl-C now if that wasn't intended.")
+        state = RunState(out_dir)
+    state.write_manifest(fingerprint=fp, total_items=len(items), input_path=input_path,
+                         items=items)
+    return state
+
+
 @app.command()
 def run(
     input: str = typer.Option(..., "--input", "-i", help="CSV/Excel with id,type columns"),
     provider: Optional[str] = typer.Option(None, help="Provider profile name from config"),
     model: Optional[str] = typer.Option(None, help="Override the profile's model"),
-    sink: str = typer.Option("csv,xlsx", help="Comma-separated sinks: csv,xlsx,es"),
+    sink: str = typer.Option("qc", help="Comma-separated sinks: qc (the 12-column QC output), csv, xlsx, es"),
     channel_pages: Optional[int] = typer.Option(None, "--channel-pages", help="Continuation pages of titles to scrape per channel (~30 each; default 4)"),
     lanes: Optional[int] = typer.Option(None, "--lanes", help="Parallel browser tabs (default 4, max 20; ~2 is the measured sweet spot — see docs)"),
     workers: Optional[int] = typer.Option(None, "--workers", help="Parallel LLM analysis workers (default 5)"),
@@ -142,6 +174,11 @@ def run(
     no_comments: bool = typer.Option(False, "--no-comments", help="Skip comment scraping (-6s/video)"),
     no_vidiq: bool = typer.Option(False, "--no-vidiq", help="Disable VidIQ overlay scraping (requires the VidIQ Chrome extension)"),
     output_dir: Optional[str] = typer.Option(None, help="Run output directory"),
+    fresh: bool = typer.Option(False, "--fresh",
+                               help="Start a new run even if this exact list has an unfinished one "
+                                    "(default: continue where it stopped)"),
+    no_keep_awake: bool = typer.Option(False, "--no-keep-awake",
+                                       help="Don't hold a no-sleep assertion (macOS) for the run"),
     verbose: bool = typer.Option(False, "-v", help="Debug logging"),
 ):
     """QC every channel/video in the input file."""
@@ -180,10 +217,10 @@ def run(
         raise typer.Exit(0)
 
     from ytqc.pipeline.orchestrator import Orchestrator
-    from ytqc.pipeline.state import RunState
     from ytqc.sinks.base import build_sinks
+    from ytqc.utils.keepawake import keep_awake
 
-    state = RunState(out_dir)
+    state = _open_run_state(out_dir, items, input_path=input, fresh=fresh)
     sinks = build_sinks(sink.split(","))
     for s in sinks:
         s.open(state.run_id, out_dir)
@@ -195,7 +232,11 @@ def run(
                         extract_only=extract_only, console=console)
     interrupted = False
     try:
-        orch.run()
+        with keep_awake(not no_keep_awake) as held:
+            if held:
+                console.print("[dim]holding the Mac awake for this run "
+                              "(lock the screen if you like — just don't let the display sleep)[/]")
+            orch.run()
     except KeyboardInterrupt:
         # orchestrator already closed the browser tabs + printed the resume hint
         interrupted = True
@@ -220,43 +261,69 @@ def resume(
     run_id: str = typer.Argument(..., help="Run id to resume"),
     input: str = typer.Option(..., "--input", "-i", help="The original input file"),
     provider: Optional[str] = typer.Option(None),
-    sink: str = typer.Option("csv,xlsx"),
+    sink: str = typer.Option("qc"),
     lanes: Optional[int] = typer.Option(None, "--lanes", help="Parallel browser tabs"),
     workers: Optional[int] = typer.Option(None, "--workers", help="Parallel LLM workers"),
     output_dir: Optional[str] = typer.Option(None),
+    no_keep_awake: bool = typer.Option(False, "--no-keep-awake",
+                                       help="Don't hold a no-sleep assertion (macOS) for the run"),
 ):
-    """Resume an interrupted run — completed items are skipped, extracted-but-
-    unanalyzed items reuse their saved browser artifacts."""
+    """Resume an interrupted run by id — completed items are skipped, extracted-
+    but-unanalyzed items reuse their saved browser artifacts.
+
+    Usually unnecessary: plain `ytqc run` on the same input file continues its
+    unfinished run automatically."""
     cfg = load_config()
     _resolve_provider(cfg, provider)  # fail cleanly on a bad --provider before resuming
     _apply_parallelism(cfg, lanes, workers)
     out_dir = output_dir or cfg.output_dir
     from ytqc.pipeline.orchestrator import Orchestrator
-    from ytqc.pipeline.state import RunState
+    from ytqc.pipeline.state import RunState, fingerprint_items
     from ytqc.sinks.base import build_sinks
+    from ytqc.utils.keepawake import keep_awake
 
     state = RunState.resume(out_dir, run_id)
     items, _report, _id_col = _read_input(input)
+    state.write_manifest(fingerprint=fingerprint_items(items), total_items=len(items),
+                         input_path=input, items=items)
     sinks = build_sinks(sink.split(","))
     for s in sinks:
         s.open(run_id, out_dir)
+    console.print(f"[green]resuming run[/] [bold]{run_id}[/] — "
+                  f"{state.done_count()}/{len(items)} already done")
     orch = Orchestrator(cfg, items, sinks, state, provider=provider, console=console)
     try:
-        orch.run()
+        with keep_awake(not no_keep_awake):
+            orch.run()
     finally:
         for s in sinks:
             s.close()
 
 
 @app.command()
-def configure():
-    """Write the default config to ~/.ytqc/config.yaml for editing."""
+def configure(
+    update: bool = typer.Option(False, "--update",
+                                help="Write back the upgrade migrations applied to your saved "
+                                     "config (e.g. adding the 'qc' sink after an upgrade)"),
+):
+    """Write the default config to ~/.ytqc/config.yaml, or (--update) persist the
+    migrations a version upgrade applies to an existing one."""
+    from ytqc.config import load_config_with_notes
     if CONFIG_PATH.exists():
         console.print(f"config already exists: {CONFIG_PATH}")
     else:
         save_config(DEFAULT_CONFIG)
         console.print(f"[green]wrote default config:[/] {CONFIG_PATH}")
-    cfg = load_config()
+    cfg, notes = load_config_with_notes()
+    if notes:
+        for n in notes:
+            console.print(f"[yellow]config upgrade:[/] {n}")
+        if update:
+            save_config(cfg)
+            console.print(f"[green]saved to[/] {CONFIG_PATH}")
+        else:
+            console.print("[dim]applied in memory for every run already; "
+                          "re-run with [bold]--update[/] to write it to the file.[/]")
     table = Table(title="provider profiles")
     table.add_column("name"); table.add_column("base_url"); table.add_column("model")
     table.add_column("vision"); table.add_column("active")
@@ -270,9 +337,9 @@ def configure():
 def taxonomy():
     """Show the closed vocabularies the QC record uses."""
     from ytqc.taxonomy import (KIDS_AGE_GROUPS, SAFETY_CATEGORIES,
-                               TIER_1_CATEGORIES)
-    console.print(f"[bold]tier_1 ({len(TIER_1_CATEGORIES)} values):[/]")
-    for c in sorted(TIER_1_CATEGORIES):
+                               TIER_1_ORDERED)
+    console.print(f"[bold]tier_1 ({len(TIER_1_ORDERED)} values):[/]")
+    for c in TIER_1_ORDERED:
         console.print(f"  • {c}")
     console.print(f"\n[bold]kids age groups:[/] {', '.join(KIDS_AGE_GROUPS)}")
     console.print(f"[bold]brand-safety categories:[/] {', '.join(SAFETY_CATEGORIES)}")
@@ -289,7 +356,12 @@ def _doctor_checks(cfg, provider: Optional[str], console: Console) -> bool:
 @app.command()
 def doctor(provider: Optional[str] = typer.Option(None)):
     """Check kimi-webbridge + LLM endpoint reachability and config validity."""
-    cfg = load_config()
+    from ytqc.config import load_config_with_notes
+    cfg, notes = load_config_with_notes()
+    console.print(f"ytqc [bold]v{__version__}[/] | sinks: {', '.join(cfg.sinks)}")
+    for n in notes:                       # say what an upgrade changed for them
+        console.print(f"[yellow]config upgrade:[/] {n} [dim](persist with "
+                      f"`ytqc configure --update`)[/]")
     ok = _doctor_checks(cfg, provider, console)
     console.print("[green]all checks passed[/]" if ok else "[red]issues found[/]")
     raise typer.Exit(0 if ok else 1)
@@ -343,7 +415,8 @@ def install_launcher():
 
 @app.command()
 def accuracy(
-    pred: str = typer.Option(..., help="results.csv from a run"),
+    pred: str = typer.Option(..., help="results.csv from a run (needs --sink qc,csv — the "
+                                       "default qc_output.csv carries only the QC columns)"),
     gold: str = typer.Option(..., help="gold labels file (xlsx/csv) with id + expected fields"),
     fields: Optional[str] = typer.Option(
         None, "--fields",

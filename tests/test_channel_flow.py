@@ -78,7 +78,7 @@ def test_happy_path_copies_channel_stats_and_classifies():
     assert rec.velocity_score == 1.42
     assert rec.country == "United States"
     assert rec.publish_or_join_date == "2015-03-01"
-    assert rec.tier_1 == "Automobiles"
+    assert rec.tier_1 == "Automobile"
     assert rec.provider == "fake"
     assert rec.model == "fake-model"
     assert rec.run_id == "run-1"

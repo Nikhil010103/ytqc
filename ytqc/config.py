@@ -93,7 +93,16 @@ class PipelineConfig(BaseModel):
     min_lane_count: int = 2             # breaker floor
 
 
+# Schema version of ~/.ytqc/config.yaml. Bump when an existing user's saved
+# config would otherwise silently keep pre-upgrade behaviour, and add a matching
+# step to _migrate() below.
+#   1 → original
+#   2 → the QC deliverable moved to the "qc" sink (qc_output.csv)
+CONFIG_VERSION = 2
+
+
 class YtqcConfig(BaseModel):
+    config_version: int = CONFIG_VERSION
     active_provider: str = "ollama-cloud"
     # Chat-agent brain — falls back to the active provider/model. Point these at
     # a fast local model (e.g. ollama-local / gemma4:latest) for snappier chat
@@ -104,7 +113,9 @@ class YtqcConfig(BaseModel):
     browser: BrowserConfig = Field(default_factory=BrowserConfig)
     sampling: SamplingConfig = Field(default_factory=SamplingConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
-    sinks: list[str] = Field(default_factory=lambda: ["csv", "xlsx"])
+    # One deliverable file per run: the QC team's 12-column qc_output.csv. Add
+    # "csv"/"xlsx" here (or via --sink) for the wide, every-field debug outputs.
+    sinks: list[str] = Field(default_factory=lambda: ["qc"])
     output_dir: str = "./ytqc_runs"
 
     def provider(self, name: Optional[str] = None) -> ProviderProfile:
@@ -144,11 +155,43 @@ DEFAULT_CONFIG = YtqcConfig(
 )
 
 
+def _migrate(data: dict) -> tuple[dict, list[str]]:
+    """Bring an older saved config up to CONFIG_VERSION. Returns (data, notes).
+
+    A saved config OVERRIDES the code's defaults, so a field whose default we
+    change never reaches anyone who has run `ytqc configure`/`ytqc setup`. Those
+    users upgrade, see no difference, and reasonably conclude the upgrade
+    failed. Each step here closes one of those gaps.
+
+    In-memory only — load_config never writes. Migrating is idempotent, and
+    `ytqc configure --update` persists the result when the user wants it on disk.
+    """
+    notes: list[str] = []
+    # v1 → v2: the QC deliverable is the "qc" sink (qc_output.csv). Older configs
+    # pin sinks: [csv, xlsx], which would leave the upgraded user with no QC file.
+    if int(data.get("config_version") or 1) < 2:
+        sinks = data.get("sinks")
+        if isinstance(sinks, list) and not any(str(s).strip().lower() == "qc" for s in sinks):
+            data["sinks"] = ["qc"] + list(sinks)
+            notes.append("added the 'qc' sink (writes the 12-column qc_output.csv) — "
+                         "your existing csv/xlsx outputs are unchanged")
+        data["config_version"] = 2
+    return data, notes
+
+
 def load_config(path: Path = CONFIG_PATH) -> YtqcConfig:
+    cfg, _notes = load_config_with_notes(path)
+    return cfg
+
+
+def load_config_with_notes(path: Path = CONFIG_PATH) -> tuple[YtqcConfig, list[str]]:
+    """load_config plus a human-readable list of what migrating the saved config
+    changed, so a CLI entry point can surface it once instead of silently."""
     if path.exists():
         data = yaml.safe_load(path.read_text()) or {}
-        return YtqcConfig.model_validate(data)
-    return DEFAULT_CONFIG.model_copy(deep=True)
+        data, notes = _migrate(data)
+        return YtqcConfig.model_validate(data), notes
+    return DEFAULT_CONFIG.model_copy(deep=True), []
 
 
 def save_config(cfg: YtqcConfig, path: Path = CONFIG_PATH) -> None:

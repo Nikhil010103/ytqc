@@ -52,7 +52,7 @@ def _read_csv_rows(path):
 def test_csv_header_written_once_across_appends(tmp_path):
     sink = CsvSink()
     sink.open(RUN_ID, str(tmp_path))
-    sink.write(QCRecord(id="a", type="video", tier_1="Automobiles"))
+    sink.write(QCRecord(id="a", type="video", tier_1="Automobile"))
     sink.write(QCRecord(id="b", type="video", tier_1="Music"))
     # do NOT close — closing rewrites/dedupes; we want to see the raw append shape
     sink._fh.flush()
@@ -71,7 +71,7 @@ def test_csv_header_written_once_across_appends(tmp_path):
 def test_csv_reopen_does_not_duplicate_header(tmp_path):
     s1 = CsvSink()
     s1.open(RUN_ID, str(tmp_path))
-    s1.write(QCRecord(id="a", type="video", tier_1="Automobiles"))
+    s1.write(QCRecord(id="a", type="video", tier_1="Automobile"))
     # close s1 — this dedupes/rewrites and keeps a single header
     s1.close()
 
@@ -92,7 +92,7 @@ def test_csv_close_dedupes_duplicate_ids_keep_last(tmp_path):
     sink = CsvSink()
     sink.open(RUN_ID, str(tmp_path))
     # same id "a" written twice with a different tier_1; last should win
-    sink.write(QCRecord(id="a", type="video", tier_1="Automobiles"))
+    sink.write(QCRecord(id="a", type="video", tier_1="Automobile"))
     sink.write(QCRecord(id="a", type="video", tier_1="Music"))
     sink.close()
 
@@ -123,6 +123,48 @@ def test_to_flat_dict_escapes_leading_formula_chars(dangerous):
     assert flat["name"] == "'" + dangerous
 
 
+# ── the id column is a join key: a plain @handle survives it ────────────────
+def test_to_flat_dict_keeps_at_handle_ids_intact():
+    """`'@mrbeast` in results.csv would break any lookup joining this file to
+    another sheet — and a handle's charset can't express a formula."""
+    flat = QCRecord(id="@mrbeast", type="channel").to_flat_dict()
+    assert flat["id"] == "@mrbeast"
+
+
+@pytest.mark.parametrize("dangerous", ["@SUM(1+1)*cmd|' /C calc'!A0", "=1+1", "+1", "-1",
+                                       "@not a handle"])
+def test_to_flat_dict_still_escapes_dangerous_ids(dangerous):
+    assert QCRecord(id=dangerous, type="channel").to_flat_dict()["id"].startswith("'")
+
+
+def test_to_flat_dict_escapes_at_handle_outside_the_id_column():
+    flat = QCRecord(id="x", type="channel", name="@mrbeast").to_flat_dict()
+    assert flat["name"] == "'@mrbeast"
+
+
+def test_csv_sink_writes_the_handle_unescaped(tmp_path):
+    sink = CsvSink()
+    sink.open(RUN_ID, str(tmp_path))
+    sink.write(QCRecord(id="@mrbeast", type="channel", tier_1="Music"))
+    sink.close()
+    rows = _read_csv_rows(tmp_path / RUN_ID / "results.csv")
+    assert rows[0]["id"] == "@mrbeast"
+
+
+# ── JSON checkpoints must not carry spreadsheet escaping ───────────────────
+def test_to_flat_dict_can_skip_escaping_for_json_checkpoints():
+    """artifacts/<id>/sunk.json is read back by tools, never evaluated by a
+    spreadsheet — a quote prefix there is pure corruption."""
+    rec = QCRecord(id="@mrbeast", type="channel", name="=Something", summary="-5% growth")
+    raw = rec.to_flat_dict(escape_formulas=False)
+    assert raw["id"] == "@mrbeast"
+    assert raw["name"] == "=Something"
+    assert raw["summary"] == "-5% growth"
+    # lists are still flattened — only the escaping is skipped
+    assert QCRecord(id="x", type="video",
+                    keywords=["a", "b"]).to_flat_dict(escape_formulas=False)["keywords"] == "a; b"
+
+
 # ── build_sinks: name → class mapping, unknown raises KeyError ──────────────
 def test_build_sinks_maps_csv_and_xlsx():
     sinks = build_sinks(["csv", "xlsx"])
@@ -143,7 +185,7 @@ def test_excel_rebuilds_all_rows_from_results_csv(tmp_path):
     # prior run: write results.csv with 2 distinct ids via the real CsvSink
     csv_sink = CsvSink()
     csv_sink.open(RUN_ID, str(tmp_path))
-    csv_sink.write(QCRecord(id="r1", type="video", tier_1="Automobiles",
+    csv_sink.write(QCRecord(id="r1", type="video", tier_1="Automobile",
                             status="OK", brand_safety_is_safe=True,
                             needs_review=False, confidence=0.9))
     csv_sink.write(QCRecord(id="r2", type="video", tier_1="Music",
@@ -154,7 +196,7 @@ def test_excel_rebuilds_all_rows_from_results_csv(tmp_path):
     # new process: ExcelSink writes only ONE row in-memory, then closes
     xl = ExcelSink()
     xl.open(RUN_ID, str(tmp_path))
-    xl.write(QCRecord(id="r1", type="video", tier_1="Automobiles",
+    xl.write(QCRecord(id="r1", type="video", tier_1="Automobile",
                       status="OK", brand_safety_is_safe=True,
                       needs_review=False, confidence=0.9))
     xl.close()

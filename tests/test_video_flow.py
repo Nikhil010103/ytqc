@@ -86,14 +86,14 @@ def test_happy_path_ok_status_and_tier_and_confidence_1():
     extract = _clean_extract()
     llm = FakeLLMClient(by_system={
         VISION: good_vision_evidence(),       # no kids signals, no conflict
-        CONTENT: good_content_output(),        # tier_1=Automobiles, risk none
+        CONTENT: good_content_output(),        # tier_1=Automobile, risk none
     })
 
     rec = run_video_flow(llm, extract, run_id="run-happy")
 
     assert rec.status == "OK"
     assert rec.error == ""
-    assert rec.tier_1 == "Automobiles"
+    assert rec.tier_1 == "Automobile"
     assert rec.judge_invoked is False
     # transcript=panel + frames(canvas, vision ok) + no tier-recovery + no judge.
     assert rec.confidence == 1.0
@@ -279,7 +279,7 @@ def test_judge_fires_on_kids_visual_vs_nonkids_tier_conflict():
     vision = good_vision_evidence(
         visual_kids_signals={"present": True, "signals": ["cartoon characters", "nursery rhyme"]},
     )
-    content = good_content_output(tier_1="Automobiles")  # NOT Kids → conflict
+    content = good_content_output(tier_1="Automobile")  # NOT Kids → conflict
     llm = FakeLLMClient(by_system={
         VISION: vision,
         CONTENT: content,
@@ -300,7 +300,7 @@ def test_judge_not_called_when_no_conflict():
     vision = good_vision_evidence(
         visual_kids_signals={"present": False, "signals": []},
     )
-    content = good_content_output(tier_1="Automobiles")
+    content = good_content_output(tier_1="Automobile")
     # Judge intentionally NOT routed: if adjudicate were called, chat_json with a
     # judge system prompt would raise AssertionError (no by_system key matches).
     llm = FakeLLMClient(by_system={

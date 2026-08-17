@@ -92,6 +92,7 @@ class ChannelVideoTile(BaseModel):
     views: int = 0
     days_ago: float = 365.0
     length_text: str = ""
+    is_short: bool = False               # scraped from the /shorts tab, not /videos
 
 
 class ChannelExtract(BaseModel):
@@ -109,6 +110,14 @@ class ChannelExtract(BaseModel):
     channel_keywords: str = ""
     is_family_safe: Optional[bool] = None
     recent_videos: list[ChannelVideoTile] = Field(default_factory=list)
+    # Shorts inventory. long_form_count/shorts_count are what was actually
+    # scraped from /videos and /shorts (the /shorts tab is only visited when the
+    # long-form catalog comes back empty — that's the Shorts-only signature).
+    tabs: list[str] = Field(default_factory=list)
+    has_shorts_tab: bool = False
+    long_form_count: int = 0
+    shorts_count: int = 0
+    is_shorts_only: bool = False
     avg_views_last5: float = 0
     avg_views_prev5: float = 0
     velocity_score: float = 0
@@ -202,6 +211,10 @@ class QCRecord(BaseModel):
     summary: str = ""
     suitable_age_group: Optional[str] = None
     is_premium_luxury: bool = False
+    # Shorts flag for the QC output's "Shorts" column: for a CHANNEL, true only
+    # when the channel is Shorts-only (no long-form uploads); for a VIDEO, true
+    # when that video is itself a Short.
+    is_shorts: bool = False
     comment: str = ""                    # QC notes
     # stats (deterministic, extraction-owned)
     subscribers: int = 0
@@ -241,14 +254,20 @@ class QCRecord(BaseModel):
     run_id: str = ""
     analyzed_at: str = ""
 
-    def to_flat_dict(self) -> dict[str, Any]:
+    def to_flat_dict(self, escape_formulas: bool = True) -> dict[str, Any]:
+        """Flatten to one string-ish value per field, ready for a CSV/Excel row.
+
+        `escape_formulas=False` skips the spreadsheet guard — use it for JSON
+        checkpoints, where no cell is ever evaluated and a quote prefix would
+        just corrupt the stored value."""
+        from ytqc.utils.csv_safe import csv_safe
+
         d = self.model_dump()
         for k, v in d.items():
             if isinstance(v, list):
                 v = "; ".join(str(x) for x in v)
                 d[k] = v
-            # CSV/spreadsheet formula injection guard: prefix risky leading
-            # chars with a single quote so Excel/Calc treat them as text.
-            if isinstance(v, str) and v and v[0] in "=+@-":
-                d[k] = "'" + v
+            if escape_formulas:
+                # `id` is a join key, so a plain @handle is left intact there.
+                d[k] = csv_safe(v, id_column=(k == "id"))
         return d
