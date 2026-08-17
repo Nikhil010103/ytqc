@@ -1,8 +1,10 @@
 import pytest
 
+from ytqc.agents import validator as validator_mod
 from ytqc.agents.validator import (ValidationError, compute_confidence,
                                    derive_brand_unsafe_category, normalize)
 from ytqc.models import BrandSafety
+from ytqc.taxonomy import TIER_1_ORDERED
 
 
 def base_result(**over):
@@ -78,10 +80,13 @@ def test_unparseable_risk_is_conservative():
     assert out.brand_safety.is_safe is False
 
 
-def test_news_tier1_forced_brand_unsafe():
-    # News is always brand-unsafe by policy even when the LLM claims it's clean.
+def test_tier1_policy_floor_forces_brand_unsafe(monkeypatch):
+    # The QC team's mapping has no News/Religion tier, so HARDCODED_UNSAFE_TIER1
+    # ships empty — but the mechanism must still floor any tier listed in it.
+    monkeypatch.setitem(validator_mod.HARDCODED_UNSAFE_TIER1, "Podcasts",
+                        ("medium", "Political Content"))
     out = normalize(base_result(
-        tier_1="News", tier_2="breaking news",
+        tier_1="Podcasts", tier_2="news roundups",
         brand_safety={"risk_level": "none", "triggered_categories": [], "explanation": "clean"},
     ), "vid1")
     assert out.brand_safety.risk_level == "medium"
@@ -89,26 +94,37 @@ def test_news_tier1_forced_brand_unsafe():
     assert "Political Content" in out.brand_safety.triggered_categories
 
 
-def test_religion_tier1_forced_brand_unsafe():
+def test_policy_floor_never_lowers_higher_llm_risk(monkeypatch):
+    # The floor may only RAISE risk — an item the LLM flagged 'high' stays high.
+    monkeypatch.setitem(validator_mod.HARDCODED_UNSAFE_TIER1, "Podcasts",
+                        ("medium", "Political Content"))
     out = normalize(base_result(
-        tier_1="Religion", tier_2="sermons",
-        brand_safety={"risk_level": "none", "triggered_categories": [], "explanation": "clean"},
-    ), "vid1")
-    assert out.brand_safety.risk_level == "medium"
-    assert out.brand_safety.is_safe is False
-    assert "Controversial Social Issues" in out.brand_safety.triggered_categories
-
-
-def test_policy_floor_never_lowers_higher_llm_risk():
-    # The floor may only RAISE risk — a News video the LLM flagged 'high' stays high.
-    out = normalize(base_result(
-        tier_1="News",
+        tier_1="Podcasts",
         brand_safety={"risk_level": "high", "triggered_categories": ["Hate Speech"],
                       "explanation": "slur in title"},
     ), "vid1")
     assert out.brand_safety.risk_level == "high"
     assert "Political Content" in out.brand_safety.triggered_categories
     assert "Hate Speech" in out.brand_safety.triggered_categories
+
+
+def test_no_tier1_is_floored_by_default():
+    """Shipping default: the floor map is empty, so no tier is auto-unsafe.
+    News/politics/religion are floored by the prompt rule + safety categories."""
+    assert validator_mod.HARDCODED_UNSAFE_TIER1 == {}
+
+
+def test_tier1_alias_recovers_old_vocabulary():
+    # A model answering with a pre-2026 / near-miss name maps onto the QC list
+    # instead of failing the record and burning a retry.
+    assert normalize(base_result(tier_1="Movies & Entertainment"), "v").tier_1 == "Entertainment"
+    assert normalize(base_result(tier_1="food & cooking"), "v").tier_1 == "Food & Beverage"
+    assert normalize(base_result(tier_1="Podcast"), "v").tier_1 == "Podcasts"
+
+
+def test_every_qc_tier1_value_validates():
+    for cat in TIER_1_ORDERED:
+        assert normalize(base_result(tier_1=cat), "v").tier_1 == cat
 
 
 def test_non_policy_tier1_not_floored():

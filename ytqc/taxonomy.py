@@ -5,15 +5,113 @@ category list are the QC team's source of truth and must not drift.
 """
 from __future__ import annotations
 
-TIER_1_CATEGORIES = {
-    "Alcohol", "Lifestyle", "News", "Travel", "Technology", "Sports",
-    "Education", "Gaming", "Health & Fitness", "Fashion", "Music", "Vlogs",
-    "Comedy", "Beauty & Makeup", "Food & Cooking", "Science", "History",
-    "Movies & Entertainment", "Animation", "Kids", "NFL", "Podcast",
-    "Global Important Days", "Global Festivals", "Automobiles", "Pets",
-    "Business & Finance", "Gifting", "Climate And Planet", "Race & Culture",
-    "Gender And Identity", "Rights And Democracy", "Mental Health",
-    "Generational Cohorts", "Religion",
+# The QC team's tier-1 mapping (29 values) — kept verbatim, in their order.
+# Order is preserved (tuple + set) because the prompt lists them to the model in
+# this order; classification drifts if the vocabulary is reworded or re-sorted.
+TIER_1_ORDERED = (
+    "Home Decor",
+    "Business & Finance",
+    "Food & Beverage",
+    "Home Appliances",
+    "Automobile",
+    "Agriculture & Farming",
+    "Kids",
+    "Alcohol",
+    "Education",
+    "Career & Jobs",
+    "Health & Wellness",
+    "Movies",
+    "Entertainment",
+    "Style & Fashion",
+    "Fitness",
+    "Travel",
+    "Science & Technology",
+    "Gadgets",
+    "Music",
+    "Sports",
+    "Extreme Sports",
+    "Pets & Animals",
+    "Gaming",
+    "Real Estate",
+    "Shopping",
+    "Arts & Crafts",
+    "Beauty",
+    "Motivation",
+    "Podcasts",
+)
+
+TIER_1_CATEGORIES = set(TIER_1_ORDERED)
+
+# Fallback when no artefact in the input grounds a category — the broadest
+# bucket in the vocabulary. Referenced by the prompts, so it must stay valid.
+TIER_1_FALLBACK = "Entertainment"
+
+# Near-miss recovery for tier_1. Models are heavily primed toward the common
+# YouTube-ish category names (and toward the pre-2026 ytqc vocabulary), so a
+# valid-in-spirit answer like "Automobiles" or "Food & Cooking" would otherwise
+# fail validation and burn a retry/judge call. Applied ONLY after an exact and a
+# case-insensitive match both fail; keys are lowercase.
+TIER_1_ALIASES: dict[str, str] = {
+    # plural / wording drift within the new vocabulary
+    "automobiles": "Automobile",
+    "auto": "Automobile",
+    "cars": "Automobile",
+    "podcast": "Podcasts",
+    "pets": "Pets & Animals",
+    "animals": "Pets & Animals",
+    "movie": "Movies",
+    "film": "Movies",
+    "films": "Movies",
+    "gadget": "Gadgets",
+    "art & craft": "Arts & Crafts",
+    "arts and crafts": "Arts & Crafts",
+    "diy": "Arts & Crafts",
+    "real estate & property": "Real Estate",
+    "property": "Real Estate",
+    "career": "Career & Jobs",
+    "careers": "Career & Jobs",
+    "jobs": "Career & Jobs",
+    "agriculture": "Agriculture & Farming",
+    "farming": "Agriculture & Farming",
+    "home decor & interiors": "Home Decor",
+    "interior design": "Home Decor",
+    "appliances": "Home Appliances",
+    "finance": "Business & Finance",
+    "business": "Business & Finance",
+    # pre-2026 ytqc vocabulary → nearest value in the QC team's mapping
+    "movies & entertainment": "Entertainment",
+    "vlogs": "Entertainment",
+    "comedy": "Entertainment",
+    "animation": "Entertainment",
+    "lifestyle": "Entertainment",
+    "news": "Entertainment",
+    "global important days": "Entertainment",
+    "global festivals": "Entertainment",
+    "generational cohorts": "Entertainment",
+    "religion": "Entertainment",
+    "race & culture": "Entertainment",
+    "gender and identity": "Entertainment",
+    "rights and democracy": "Entertainment",
+    "history": "Education",
+    "science": "Science & Technology",
+    "technology": "Science & Technology",
+    "tech": "Science & Technology",
+    "climate and planet": "Science & Technology",
+    "food & cooking": "Food & Beverage",
+    "food": "Food & Beverage",
+    "cooking": "Food & Beverage",
+    "beauty & makeup": "Beauty",
+    "makeup": "Beauty",
+    "fashion": "Style & Fashion",
+    "style": "Style & Fashion",
+    "health & fitness": "Health & Wellness",
+    "health": "Health & Wellness",
+    "wellness": "Health & Wellness",
+    "mental health": "Health & Wellness",
+    "gym": "Fitness",
+    "nfl": "Sports",
+    "gifting": "Shopping",
+    "shopping & deals": "Shopping",
 }
 
 KIDS_AGE_GROUPS = ("0-2 years", "3-5 years", "6-8 years", "9-12 years", "Teens")
@@ -33,14 +131,16 @@ SAFETY_CATEGORIES = (
     "Sensational & Shocking Content",
 )
 
-# tier_1 categories that are ALWAYS brand-unsafe regardless of the LLM verdict.
-# News/politics and religious content are sensitive placements most advertisers
-# exclude by policy, so the validator floors their risk deterministically. Maps
-# each such tier_1 → (min risk_level to enforce, brand-safety category to record).
-HARDCODED_UNSAFE_TIER1: dict[str, tuple[str, str]] = {
-    "News": ("medium", "Political Content"),
-    "Religion": ("medium", "Controversial Social Issues"),
-}
+# tier_1 categories that are ALWAYS brand-unsafe regardless of the LLM verdict —
+# maps tier_1 → (min risk_level to enforce, brand-safety category to record).
+#
+# Currently EMPTY: the QC team's tier-1 mapping has no News or Religion bucket,
+# so there is no tier_1 value to key the policy floor on. News/politics and
+# religious content are still floored to brand-unsafe — but via the
+# "Political Content" / "Controversial Social Issues" safety categories (a
+# prompt rule + the deterministic gate), not via tier_1. The mechanism below is
+# kept so a future tier can be floored again by adding one line.
+HARDCODED_UNSAFE_TIER1: dict[str, tuple[str, str]] = {}
 
 # The video-analysis prompt (lifted verbatim) emits its own bolded trigger
 # labels; the validator normalizes them onto SAFETY_CATEGORIES via this map.

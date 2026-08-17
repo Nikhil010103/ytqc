@@ -61,16 +61,26 @@ def test_dispatch_aliases_and_coerces(tmp_path, monkeypatch):
 
 # ── run_qc with a stubbed Orchestrator ──────────────────────────────────────
 
+def _stub_orch(monkeypatch, *, sink_ids, stats):
+    """Install a stub Orchestrator that checkpoints `sink_ids` (as a real run
+    does) and returns `stats`. Checkpointing matters: run_qc derives how much of
+    the user's list is finished from RunState, not from the returned counts."""
+    class StubOrch:
+        def __init__(self, cfg, items, sinks, state, **k):
+            self.state = state
+        def run(self):
+            for i in sink_ids:
+                self.state.mark(i, "SUNK")
+            return stats
+    monkeypatch.setattr("ytqc.pipeline.orchestrator.Orchestrator", StubOrch)
+
+
 def test_run_qc_runs_and_summarizes(tmp_path, monkeypatch):
     f = tmp_path / "items.csv"
     _write_csv(f, [{"id": "v1", "type": "video"}, {"id": "v2", "type": "video"}])
-
-    class StubOrch:
-        def __init__(self, *a, **k): pass
-        def run(self):
-            return RunStats(done=2, errors=0, unsafe=1, needs_review=1,
-                            tier_counts={"Music": 2})
-    monkeypatch.setattr("ytqc.pipeline.orchestrator.Orchestrator", StubOrch)
+    _stub_orch(monkeypatch, sink_ids=["v1", "v2"],
+               stats=RunStats(done=2, errors=0, unsafe=1, needs_review=1,
+                              tier_counts={"Music": 2}))
 
     ctx = _ctx(tmp_path)
     reg = ToolRegistry(ctx)
@@ -82,6 +92,117 @@ def test_run_qc_runs_and_summarizes(tmp_path, monkeypatch):
     # the chosen folder is reported back so the chat reply can state it
     assert out["output_dir"] == out_dir
     assert out["results_path"].startswith(out_dir)
+    # everything processed → the assistant may report it as finished
+    assert out["status"] == "complete"
+    assert "remaining" not in out and "warning" not in out
+
+
+def test_run_qc_reports_a_stopped_run_as_incomplete(tmp_path, monkeypatch):
+    """The field bug: a run halted partway returned a result that read exactly
+    like a finished one, and the assistant replied "All set!" while half the
+    channels had never been QC'd."""
+    f = tmp_path / "items.csv"
+    _write_csv(f, [{"id": f"v{i}", "type": "video"} for i in range(49)])
+    _stub_orch(monkeypatch, sink_ids=[f"v{i}" for i in range(24)],
+               stats=RunStats(done=24, errors=1, unsafe=6, needs_review=24,
+                              tier_counts={"Music": 8}, remaining=25,
+                              stopped_reason="bot-check/stress halt"))
+
+    reg = ToolRegistry(_ctx(tmp_path))
+    out = reg.dispatch("run_qc", {"path": str(f), "lanes": 2,
+                                  "output_dir": str(tmp_path / "out")})
+    assert out["status"] == "incomplete"
+    assert out["remaining"] == 25
+    assert out["completed_total"] == 24 and out["total_in_file"] == 49
+    assert "bot-check" in out["stopped_reason"]
+    assert "DO NOT tell the user the run finished" in out["warning"]
+    assert "run_qc again" in out["how_to_resume"]
+
+
+def test_run_qc_resume_completes_and_clears_the_incomplete_flag(tmp_path, monkeypatch):
+    f = tmp_path / "items.csv"
+    _write_csv(f, [{"id": f"v{i}", "type": "video"} for i in range(5)])
+    out_dir = str(tmp_path / "out")
+    reg = ToolRegistry(_ctx(tmp_path))
+
+    _stub_orch(monkeypatch, sink_ids=["v0", "v1"], stats=RunStats(done=2, remaining=3))
+    first = reg.dispatch("run_qc", {"path": str(f), "output_dir": out_dir})
+    assert first["status"] == "incomplete" and first["remaining"] == 3
+
+    _stub_orch(monkeypatch, sink_ids=["v2", "v3", "v4"], stats=RunStats(done=3))
+    second = reg.dispatch("run_qc", {"path": str(f), "output_dir": out_dir})
+    assert second["run_id"] == first["run_id"]          # continued the same run
+    assert second["status"] == "complete"
+    assert second["resumed"] is True
+    assert second["already_done_before_this_run"] == 2
+    assert second["completed_total"] == 5
+
+
+def test_run_qc_points_later_tools_at_the_folder_it_used(tmp_path, monkeypatch):
+    """A run saved to a custom folder must still be findable by list_runs /
+    show_results / resume_run — they read ctx.output_dir, which otherwise stays
+    on the config default and reports "no runs found" for the run just made."""
+    f = tmp_path / "items.csv"
+    _write_csv(f, [{"id": "v1", "type": "video"}])
+    _stub_orch(monkeypatch, sink_ids=["v1"], stats=RunStats(done=1))
+    ctx = _ctx(tmp_path)
+    default_dir = ctx.output_dir
+    chosen = str(tmp_path / "somewhere" / "else")
+
+    reg = ToolRegistry(ctx)
+    out = reg.dispatch("run_qc", {"path": str(f), "output_dir": chosen})
+    assert out["output_dir"] == chosen
+    assert ctx.output_dir == chosen != default_dir
+    # and the follow-up tools now actually see it
+    assert reg.dispatch("list_runs", {})["count"] == 1
+
+
+def test_resume_run_recovers_pasted_ids_without_the_original_input(tmp_path, monkeypatch):
+    """A run started from pasted ids can still be resumed later: the ids were
+    recorded in its manifest, so no file path is needed."""
+    ids = "\n".join(f"UC{i:022d}" for i in range(6))
+    _stub_orch(monkeypatch, sink_ids=[f"UC{i:022d}" for i in range(2)],
+               stats=RunStats(done=2, remaining=4))
+    ctx = _ctx(tmp_path)
+    reg = ToolRegistry(ctx)
+    first = reg.dispatch("run_qc", {"ids": ids, "output_dir": ctx.output_dir})
+    assert first["status"] == "incomplete"
+
+    _stub_orch(monkeypatch, sink_ids=[f"UC{i:022d}" for i in range(2, 6)],
+               stats=RunStats(done=4))
+    out = reg.dispatch("resume_run", {"run_id": first["run_id"]})   # no path!
+    assert out["status"] == "complete"
+    assert out["total_in_file"] == 6 and out["completed_total"] == 6
+
+
+def test_resume_run_without_a_list_asks_for_the_input(tmp_path):
+    """A run whose manifest has no item list can't be reconstructed — say so
+    instead of silently resuming nothing."""
+    from ytqc.pipeline.state import RunState
+    ctx = _ctx(tmp_path)
+    st = RunState(ctx.output_dir, run_id="20260101-000000-abcdef")
+    st.write_manifest(fingerprint="fp", total_items=5)          # no items stored
+    out = ToolRegistry(ctx).dispatch("resume_run", {"run_id": st.run_id})
+    assert "error" in out and "original input" in out["error"]
+
+
+def test_list_runs_reports_what_is_left_for_the_how_many_left_question(tmp_path, monkeypatch):
+    """`how many are left?` must be answerable from a tool, including after a
+    Ctrl-C where no run_qc result ever came back."""
+    f = tmp_path / "items.csv"
+    _write_csv(f, [{"id": f"v{i}", "type": "video"} for i in range(49)])
+    _stub_orch(monkeypatch, sink_ids=[f"v{i}" for i in range(24)],
+               stats=RunStats(done=24, remaining=25))
+    ctx = _ctx(tmp_path)
+    reg = ToolRegistry(ctx)
+    reg.dispatch("run_qc", {"path": str(f), "output_dir": ctx.output_dir})
+
+    runs = reg.dispatch("list_runs", {})["runs"]
+    unfinished = [r for r in runs if r.get("unfinished")]
+    assert len(unfinished) == 1
+    assert unfinished[0]["remaining"] == 25
+    assert unfinished[0]["total_items"] == 49
+    assert unfinished[0]["input_path"] == str(f)       # so it can offer to resume
 
 
 def test_run_qc_without_input_errors(tmp_path):
@@ -256,7 +377,9 @@ def test_list_runs_finds_run_dirs(tmp_path):
 
 def test_show_taxonomy(tmp_path):
     out = ToolRegistry(_ctx(tmp_path)).dispatch("show_taxonomy", {})
-    assert len(out["tier_1"]) == 35 and len(out["kids_age_groups"]) == 5
+    assert len(out["tier_1"]) == 29 and len(out["kids_age_groups"]) == 5
+    # served in the QC team's mapping order, not sorted
+    assert out["tier_1"][0] == "Home Decor" and out["tier_1"][-1] == "Podcasts"
 
 
 def test_dispatch_propagates_keyboard_interrupt(tmp_path):

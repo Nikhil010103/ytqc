@@ -198,6 +198,30 @@ CHANNEL_VIDEOS_OK: dict = {
 # No video grid extracted (empty).
 CHANNEL_VIDEOS_EMPTY: dict = {"n": 0, "vids": []}
 
+# ── channel tab strip (CHANNEL_TABS) ──────────────────────────────────────
+CHANNEL_TABS_WITH_SHORTS: dict = {
+    "n": 5, "tabs": ["Home", "Videos", "Shorts", "Playlists", "About"],
+}
+CHANNEL_TABS_NO_SHORTS: dict = {
+    "n": 4, "tabs": ["Home", "Videos", "Playlists", "About"],
+}
+# A Shorts-only channel: YouTube drops the Videos tab entirely.
+CHANNEL_TABS_SHORTS_ONLY: dict = {
+    "n": 3, "tabs": ["Home", "Shorts", "About"],
+}
+
+# ── /shorts catalog (CHANNEL_SHORTS) ──────────────────────────────────────
+CHANNEL_SHORTS_OK: dict = {
+    "n": 4,
+    "vids": [
+        {"id": "sh0001aaaa", "title": "60 second chain clean", "views": "1.2M views", "age": ""},
+        {"id": "sh0002bbbb", "title": "This mod is illegal?!", "views": "890K views", "age": ""},
+        {"id": "sh0003cccc", "title": "Rev battle #shorts", "views": "2.4M views", "age": ""},
+        {"id": "sh0004dddd", "title": "Helmet check", "views": "300K views", "age": ""},
+    ],
+}
+CHANNEL_SHORTS_EMPTY: dict = {"n": 0, "vids": []}
+
 # ── readiness / gate probes (webbridge internals) ─────────────────────────
 # webbridge.navigate() polls a readiness JS that returns {"r": True} and runs a
 # consent/captcha gate. FakeKimiClient is browser-free and overrides navigate so

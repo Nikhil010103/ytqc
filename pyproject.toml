@@ -1,6 +1,6 @@
 [project]
 name = "ytqc"
-version = "0.1.0"
+version = "0.2.0"
 description = "Browser-driven agentic YouTube QC CLI — automates adtech channel/video categorization"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }

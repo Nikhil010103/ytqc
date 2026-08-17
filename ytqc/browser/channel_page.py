@@ -58,6 +58,13 @@ def extract_channel(
     except Exception:
         pass
 
+    # Tab inventory (free — same ytInitialData): tells us whether a Shorts tab
+    # exists, which the Shorts-only decision below needs.
+    tabs = kimi.js(J.CHANNEL_TABS)
+    if isinstance(tabs, dict) and tabs.get("tabs"):
+        ex.tabs = [str(t) for t in tabs["tabs"]]
+        ex.has_shorts_tab = any(t.strip().lower() == "shorts" for t in ex.tabs)
+
     # ── /videos ─────────────────────────────────────────────────────────
     kimi.navigate(f"{base}/videos", ready_js=J.CHANNEL_READY)
     # Lane tabs run backgrounded → YouTube only renders ~3 grid tiles and won't
@@ -85,16 +92,24 @@ def extract_channel(
             ))
         ex.provenance["videos_grid"] = f"{source}:{len(ex.recent_videos)}"
     else:
-        ex.ok = ex.ok and bool(ex.title)
         ex.provenance["videos_grid"] = "none"
         log.warning("no video grid extracted for %s", channel_id)
+    ex.long_form_count = len(ex.recent_videos)
 
-    # Thumbnails: scroll through the rendered grid and screenshot each viewport.
+    # ── /shorts (only when there is no long-form catalog) ───────────────
+    # Shorts never appear in the /videos grid. A channel with a Shorts tab and
+    # an empty /videos grid is Shorts-only: visit /shorts so classification has
+    # titles + thumbnails to work with (and so the QC "Shorts" column is real).
+    if ex.long_form_count == 0 and ex.has_shorts_tab:
+        _scrape_shorts_tab(kimi, ex, base)
+
+    # Thumbnails: scroll through the rendered grid and screenshot each viewport
+    # (of whichever catalog page we ended on — /videos, or /shorts above).
     ex.grid_screenshots_b64 = _capture_grid_shots(kimi, channel_grid_shots)
     ex.provenance["grid_shots"] = str(len(ex.grid_screenshots_b64))
 
     # VidIQ overlay (optional, failure-isolated) — the "Quick channel stats" block
-    # is injected into #page-header and is present on the /videos tab we're on now.
+    # is injected into #page-header and is present on every channel tab.
     if with_vidiq:
         ex.vidiq = scrape_vidiq(kimi, "channel", timeout_s=vidiq_timeout_s)
         ex.provenance["vidiq"] = "panel" if ex.vidiq.ok else "none"
@@ -112,6 +127,37 @@ def extract_channel(
         ex.ok = False
         ex.error = "channel page extraction failed (not found / renamed?)"
     return ex
+
+
+def _scrape_shorts_tab(kimi: KimiClient, ex: ChannelExtract, base: str) -> None:
+    """Read the /shorts catalog into `ex` and set the Shorts-only flags.
+
+    Called only when /videos came back empty, so any Shorts found here mean the
+    channel publishes Shorts exclusively. Best-effort: a failure leaves the
+    channel looking like an empty catalog, exactly as before this existed."""
+    try:
+        kimi.navigate(f"{base}/shorts", ready_js=J.CHANNEL_READY)
+        try:
+            kimi.cdp("Emulation.setFocusEmulationEnabled", {"enabled": True})
+        except Exception as exc:
+            log.debug("focus emulation unavailable on /shorts (%s)", exc)
+        shorts = kimi.js(J.CHANNEL_SHORTS)
+    except Exception as exc:
+        log.warning("shorts tab scrape failed for %s: %s", ex.channel_id, exc)
+        return
+    if not (isinstance(shorts, dict) and shorts.get("n", 0) > 0):
+        ex.provenance["shorts_grid"] = "none"
+        return
+    for v in shorts["vids"]:
+        ex.recent_videos.append(ChannelVideoTile(
+            video_id=v["id"],
+            title=v.get("title", ""),
+            views=parse_count(v.get("views", "")),
+            is_short=True,
+        ))
+    ex.shorts_count = len(ex.recent_videos)
+    ex.is_shorts_only = True
+    ex.provenance["shorts_grid"] = f"shortsLockupViewModel:{ex.shorts_count}"
 
 
 def _capture_grid_shots(kimi: KimiClient, n: int) -> list[str]:

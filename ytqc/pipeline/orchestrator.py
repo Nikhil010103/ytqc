@@ -53,6 +53,16 @@ class RunStats:
     unsafe: int = 0
     needs_review: int = 0
     tier_counts: dict = field(default_factory=dict)
+    # Set when the run ended with work still on the queue — a captcha/stress
+    # halt or a dropped browser bridge stops the lanes but lets run() return
+    # normally, so without these a partial run is indistinguishable from a
+    # complete one (and gets reported as "all done").
+    remaining: int = 0
+    stopped_reason: str = ""
+
+    @property
+    def complete(self) -> bool:
+        return self.remaining == 0
 
 
 class Orchestrator:
@@ -310,7 +320,14 @@ class Orchestrator:
                     with self._sink_lock:
                         for sink in self.sinks:
                             sink.write(rec)
-                        self.state.mark(item.id, "SUNK")
+                        # Checkpoint the FULL record alongside the stage marker:
+                        # the deliverable csv only carries the QC columns, so
+                        # artifacts/<id>/sunk.json is what keeps every analysed
+                        # field recoverable after the run. No formula escaping —
+                        # nothing evaluates JSON, and a quote prefix would only
+                        # corrupt the values a later reader reads back.
+                        self.state.mark(item.id, "SUNK",
+                                        payload=rec.to_flat_dict(escape_formulas=False))
                         self._tally(rec)
                     progress.advance(task_id)
                     progress.update(task_id, description=desc)
@@ -461,7 +478,8 @@ class Orchestrator:
         if interrupted:
             self.console.print(
                 f"[yellow]interrupted[/] — {self.stats.done} item(s) done & checkpointed. "
-                f"Resume with [bold]ytqc resume {self.state.run_id} --input <file>[/]")
+                f"Re-run the same input file to continue where it stopped "
+                f"(or [bold]ytqc resume {self.state.run_id} --input <file>[/])")
             raise KeyboardInterrupt
 
         elapsed = time.time() - t0
@@ -477,4 +495,28 @@ class Orchestrator:
             dist = ", ".join(f"{k}: {v}" for k, v in
                              sorted(self.stats.tier_counts.items(), key=lambda kv: -kv[1]))
             self.console.print(f"[dim]tier_1 distribution: {dist}[/]")
+
+        # Did every item this run was given actually get processed? A halt
+        # (captcha, dropped bridge, retired lanes) leaves items on the work
+        # queue and still returns here, so this is the only place the shortfall
+        # is visible. Say it loudly — a silently-partial run reads as a finished
+        # one and the remaining channels get forgotten.
+        self.stats.remaining = max(0, len(todo) - self.stats.done)
+        if self.stats.remaining:
+            self.stats.stopped_reason = self._stopped_reason()
+            self.console.print(
+                f"[yellow bold]⚠ run stopped early — {self.stats.remaining} of "
+                f"{len(todo)} item(s) were NOT processed[/] ({self.stats.stopped_reason}). "
+                f"Everything done so far is checkpointed; re-run the same input file "
+                f"to continue where it stopped.")
         return self.stats
+
+    def _stopped_reason(self) -> str:
+        """Plain-language cause for an early stop, for humans and the chat agent."""
+        if self._setup_error:
+            return self._setup_error
+        if self._halt.is_set():
+            return "bot-check/stress halt — solve any captcha in the browser first"
+        if self._breaker.allowed_lanes < self.lanes:
+            return "browser lanes were retired after repeated stress signals"
+        return "the browser lanes exited before finishing the queue"

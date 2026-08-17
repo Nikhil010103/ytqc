@@ -91,6 +91,7 @@ def run_channel_flow(
 
     _fill_record(rec, out)
     fill_vidiq(rec, extract.vidiq, llm)
+    rec.is_shorts = extract.is_shorts_only     # channel-level: Shorts-only catalog
     rec.judge_invoked = judge_invoked
     rec.confidence = validator.compute_confidence(
         transcript_source="none",

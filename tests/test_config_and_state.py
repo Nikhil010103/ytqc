@@ -195,7 +195,7 @@ def test_mark_persists_across_reopen(tmp_path):
 
 def test_save_load_artifact_roundtrip(tmp_path):
     st = RunState(str(tmp_path), run_id="run-art")
-    payload = {"tier_1": "Automobiles", "nested": {"k": [1, 2, 3]}, "unicode": "café"}
+    payload = {"tier_1": "Automobile", "nested": {"k": [1, 2, 3]}, "unicode": "café"}
     st.save_artifact("vid-1", "extracted.json", payload)
     assert st.load_artifact("vid-1", "extracted.json") == payload
 

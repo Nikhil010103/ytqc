@@ -78,6 +78,10 @@ def run_video_flow(llm: LLMClient, extract: VideoExtract, run_id: str) -> QCReco
 
     _fill_record(rec, out)
     fill_vidiq(rec, extract.vidiq, llm)
+    # Video-level: the item IS a Short. YouTube's Shorts ceiling is 3 minutes;
+    # a live stream is never a Short however brief the recording is.
+    rec.is_shorts = bool(extract.duration_s and extract.duration_s <= 180
+                         and not extract.is_live)
     rec.judge_invoked = judge_invoked
     rec.confidence = validator.compute_confidence(
         transcript_source=extract.transcript.source,

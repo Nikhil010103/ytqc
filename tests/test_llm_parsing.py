@@ -9,8 +9,8 @@ def test_clean_json():
 
 def test_fenced_json_gemma_style():
     # observed live: gemma4:31b-cloud wraps in ```json fences even with format:json
-    raw = '```json\n{"tier_1": "Automobiles", "tier_2": "luxury car review"}\n```'
-    assert parse_llm_json(raw)["tier_1"] == "Automobiles"
+    raw = '```json\n{"tier_1": "Automobile", "tier_2": "luxury car review"}\n```'
+    assert parse_llm_json(raw)["tier_1"] == "Automobile"
 
 
 def test_prose_around_payload():

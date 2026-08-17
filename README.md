@@ -1,8 +1,8 @@
 # 🎬 ytqc — Agentic YouTube QC
 
-Point it at a list of YouTube channels/videos. It opens each one in a real browser, reads the page the way a human QC analyst would — metadata, transcript, frames, comments, stats — and writes a validated QC record (category, brand safety, audience, language, region, engagement) to CSV / Excel.
+Point it at a list of YouTube channels/videos. It opens each one in a real browser, reads the page the way a human QC analyst would — metadata, transcript, frames, comments, stats — and writes a validated QC record (category, brand safety, age marking, language, Shorts/Premium flags) to one ready-to-hand-over CSV.
 
-🧠 2 LLM calls/video · 🌐 real-browser extraction · 🛡️ deterministic safety validator · 📊 CSV + styled Excel
+🧠 2 LLM calls/video · 🌐 real-browser extraction · 🛡️ deterministic safety validator · 📊 one 12-column QC csv · ⏸️ stop & resume anytime
 
 ---
 
@@ -17,11 +17,39 @@ ytqc setup
 
 No token, no account, no SSH key. If you're on a fresh machine (nothing installed), or you're not sure about Python/admin rights, follow the full **[end-to-end install](#-full-install-assume-nothing) below** instead — it covers every step.
 
-**Pin a specific version** · **Update:**
+**Pin a specific version:**
 ```bash
-pipx install "git+https://github.com/Nikhil010103/ytqc.git@v0.1.0"   # pin
-pipx upgrade ytqc                                                    # update
+pipx install "git+https://github.com/Nikhil010103/ytqc.git@v0.2.0"
 ```
+
+---
+
+## ⬆️ Updating an existing install
+
+```bash
+pipx install --force "git+https://github.com/Nikhil010103/ytqc.git"   # update
+ytqc doctor                                                           # confirm
+```
+
+`ytqc doctor` prints the version and the active sinks — check it says **v0.2.0** before your next batch.
+
+> **Use `--force`, not `pipx upgrade`.** For a git install, pip compares version numbers and skips the reinstall when they match, so `pipx upgrade ytqc` can report success while changing nothing. `--force` always reinstalls from the current `main`.
+
+**Have more than one copy?** `which -a ytqc` — if both `~/.local/bin/ytqc` (pipx) and a project `.venv/bin/ytqc` show up, whichever comes first on `PATH` is the one you're running. Update that one, or remove the stale copy with `pipx uninstall ytqc`.
+
+### What updating changes for you
+
+Upgrading from **v0.1.x** to **v0.2.0** brings the QC-team tier-1 mapping (29 categories), the single `qc_output.csv` deliverable, Shorts/Premium columns, and automatic stop-and-resume. Three things are handled for you:
+
+| | what happens |
+|---|---|
+| **Your saved config** | `~/.ytqc/config.yaml` pins `sinks: [csv, xlsx]` and would otherwise override the new default, leaving you with **no QC file**. The `qc` sink is added automatically on load — `ytqc doctor` tells you, and `ytqc configure --update` writes it to the file. Your existing csv/xlsx outputs are untouched. |
+| **Cached AI verdicts** | Keyed on the prompt version, which is bumped — so you can't be served cached categories from the retired vocabulary (`Movies & Entertainment`, `Comedy`, …). |
+| **Cached page scrapes** | Keyed on the extract-schema version, which is bumped — so channels scraped before the upgrade are re-read instead of reporting `Shorts=No` for every Shorts-only channel. |
+
+Nothing needs clearing by hand; the old cache entries simply age out.
+
+> **Heads-up on the output file.** The default run now writes `qc_output.csv` (12 columns) instead of `results.csv`. If you have a script or sheet reading `results.csv`, either keep it by running with `--sink qc,csv,xlsx` or point it at the new file. Category names have changed too, so numbers from v0.1 runs aren't directly comparable with v0.2 runs.
 
 ---
 
@@ -178,8 +206,8 @@ ytqc run -i items.csv     # or go straight to a batch run
 |---------|-------------|
 | `ytqc setup` | one-command wizard: install deps + connect Chrome + open chat |
 | `ytqc` | open the chat assistant (QC in plain language) |
-| `ytqc run -i items.csv` | batch QC run  (`--dry-run`, `--extract-only`, `--limit N`, `--lanes`, `--no-comments`) |
-| `ytqc resume <run_id> -i items.csv` | continue an interrupted run (artifacts reused) |
+| `ytqc run -i items.csv` | batch QC run — **auto-resumes** an unfinished run of the same list (`--fresh`, `--dry-run`, `--extract-only`, `--limit N`, `--lanes`, `--no-comments`) |
+| `ytqc resume <run_id> -i items.csv` | continue one specific run by id (rarely needed — `run` resumes by itself) |
 | `ytqc doctor` | connectivity + model health check |
 | `ytqc guide` | full in-tool setup guide |
 | `ytqc start` | boot services then open chat (desktop-launcher target) |
@@ -190,11 +218,37 @@ ytqc run -i items.csv     # or go straight to a batch run
 📁 Each run writes to `./ytqc_runs/<run_id>/`:
 
 ```
-results.csv      every QC field, one row per item
-results.xlsx     styled — 🟢 safe  🟡 needs review  🔴 unsafe  ⚪ error
+qc_output.csv    ← the deliverable: one row per channel, the 12 QC columns
+manifest.json    what this run was asked to do (used to auto-resume it)
 state.jsonl      per-item checkpoint (resumable)
-artifacts/       raw extraction JSON per item
+artifacts/       raw extraction JSON + the full analysed record per item
 ```
+
+`qc_output.csv` columns, in order:
+
+| Channel ID | Title | Subscribers | Channel Country | Brand Safety Status | Brand Safety Risk Level | Tier 1 | Tier 2 | Age Marking | Language | Shorts | Premium |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+
+- **Brand Safety Status** — `Safe` / `Unsafe` (`Error` if the page couldn't be read).
+- **Age Marking** — the kids band (`3-5 years`) for Kids content, otherwise the suitability band (`All Ages` / `13+` / `16+` / `18+`).
+- **Shorts** — `Yes` only when the channel is **Shorts-only** (no long-form uploads); for a video item, when the video itself is a Short.
+- **Premium** — `Yes` when the content reads as premium/luxury (products, venues, production).
+
+Need every field instead? `--sink qc,csv,xlsx` also writes the wide `results.csv` and the styled `results.xlsx` (🟢 safe 🟡 needs review 🔴 unsafe ⚪ error). Nothing is lost either way — the full record per item is checkpointed to `artifacts/<id>/sunk.json`.
+
+### ⏸️ Stopping and resuming
+
+Big lists rarely finish in one sitting — a captcha halt, Ctrl-C, or a closed laptop stops the run. Every item is checkpointed the moment it's written, so **just run the same file again**:
+
+```bash
+ytqc run -i items.csv            # → "resuming run 20260812-… — 812/2785 already done"
+```
+
+Matching is on the *ids in the file*, not its name or path, so a renamed or re-sorted copy still resumes; adding or removing ids makes it a new run. Use `--fresh` to force a clean start.
+
+### 💤 Leaving it running (macOS)
+
+Locking the screen doesn't stop a run — **sleep** does. While a run is in flight ytqc holds a `caffeinate -dimsu` assertion, so the display, disk and system stay awake until it finishes (`--no-keep-awake` opts out). Lock the screen if you like, but don't force the display to sleep: the pipeline reads channel thumbnails and video frames from screenshots, and a sleeping display gives blank ones (those items still complete, but flagged for review). To walk away safely, let the screen lock while the display stays on, or close the lid only after the run reports finished.
 
 ---
 
@@ -223,11 +277,11 @@ input.csv ─► browser producer (serial, paced)          analysis workers (par
              ├ likes / comments / channel stats         ├ conditional Judge (conflicts only)
              └ artifacts + JSONL checkpoint     ─────►  ├ deterministic validator (closed
                                                         │  vocab, XOR, risk floor, confidence)
-                                                        └ sinks: csv / styled xlsx / es(stub)
+                                                        └ sinks: qc_output.csv (+ csv / xlsx)
 ```
 
 - **2 LLM calls/video, ~K+1 per channel** (K sampled videos → briefs → weighted vote → synthesizer). Channel brand safety is worst-case across briefs, never averaged.
-- The LLM never computes stats and never has the last word on vocabulary — the validator enforces the 35-value tier_1 vocab, the Kids XOR rule, and floors risk levels with deterministic term-gate hits.
+- The LLM never computes stats and never has the last word on vocabulary — the validator enforces the 29-value tier_1 vocab, the Kids XOR rule, and floors risk levels with deterministic term-gate hits.
 - Throughput ~80–100 items/hr mixed (browser-paced for bot hygiene); videos ~16s extraction + ~10s LLM, pipelined.
 
 </details>

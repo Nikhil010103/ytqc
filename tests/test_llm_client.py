@@ -148,12 +148,12 @@ def _status_error(status: int, msg: str | None = None):
 def test_temperature_escalates_0_1_to_0_3_to_0_6_on_parse_failure(monkeypatch, sleeps):
     llm = _make_client(monkeypatch)
     # two un-parseable bodies, then valid JSON
-    stub = _CreateStub(["this is not json", "still not json", '{"tier_1": "Automobiles"}'])
+    stub = _CreateStub(["this is not json", "still not json", '{"tier_1": "Automobile"}'])
     _install_create(monkeypatch, llm, stub)
 
     out = llm.chat_json("sys", "user")
 
-    assert out == {"tier_1": "Automobiles"}
+    assert out == {"tier_1": "Automobile"}
     # Temperatures climbed across the ladder, one rung per parse failure.
     assert stub.temps == [0.1, 0.3, 0.6]
     assert list(TEMP_LADDER) == [0.1, 0.3, 0.6]
@@ -212,13 +212,13 @@ def test_429_backoff_uses_network_budget_and_preserves_parse_budget(monkeypatch,
     stub = _CreateStub([
         _status_error(429, "Too Many Requests 429"),
         _status_error(429, "Too Many Requests 429"),
-        '{"tier_1": "Automobiles"}',
+        '{"tier_1": "Automobile"}',
     ])
     _install_create(monkeypatch, llm, stub)
 
     out = llm.chat_json("sys", "user")
 
-    assert out == {"tier_1": "Automobiles"}
+    assert out == {"tier_1": "Automobile"}
     # Backed off twice with the 429 schedule: 5*2**0=5, then 5*2**1=10.
     assert sleeps.waits == [5.0, 10.0]
     # Parse retries were untouched: every create() ran at the base temperature
@@ -475,7 +475,7 @@ class _FakeCache:
 
 
 def test_cache_hit_short_circuits_create_and_increments_cache_hits(monkeypatch, sleeps):
-    cached_payload = {"tier_1": "Automobiles", "cached": True}
+    cached_payload = {"tier_1": "Automobile", "cached": True}
     cache = _FakeCache(hit=cached_payload)
     llm = _make_client(monkeypatch, cache=cache)
     stub = _CreateStub(['{"should": "not be used"}'])
@@ -494,17 +494,17 @@ def test_cache_hit_short_circuits_create_and_increments_cache_hits(monkeypatch, 
 def test_cache_miss_populates_cache_and_calls_create(monkeypatch, sleeps):
     cache = _FakeCache(hit=None)
     llm = _make_client(monkeypatch, cache=cache)
-    stub = _CreateStub(['{"tier_1": "Automobiles"}'])
+    stub = _CreateStub(['{"tier_1": "Automobile"}'])
     _install_create(monkeypatch, llm, stub)
 
     out = llm.chat_json("sys", "user")
 
-    assert out == {"tier_1": "Automobiles"}
+    assert out == {"tier_1": "Automobile"}
     assert stub.call_count == 1
     assert llm.cache_hits == 0
     # On a miss the parsed result is written back.
     assert len(cache.put_calls) == 1
     stored_key, stored_val = cache.put_calls[0]
-    assert stored_val == {"tier_1": "Automobiles"}
+    assert stored_val == {"tier_1": "Automobile"}
     # The same key was used for get and put.
     assert cache.get_keys == [stored_key]

@@ -22,12 +22,14 @@ def build_sinks(names: list[str]) -> list[ResultSink]:
     from ytqc.sinks.csv_sink import CsvSink
     from ytqc.sinks.es_sink import ElasticsearchSink
     from ytqc.sinks.excel_sink import ExcelSink
+    from ytqc.sinks.qc_sink import QcCsvSink
 
-    registry = {"csv": CsvSink, "xlsx": ExcelSink, "excel": ExcelSink, "es": ElasticsearchSink}
+    registry = {"qc": QcCsvSink, "csv": CsvSink, "xlsx": ExcelSink,
+                "excel": ExcelSink, "es": ElasticsearchSink}
     sinks = []
     for n in names:
         cls = registry.get(n.strip().lower())
         if cls is None:
-            raise KeyError(f"unknown sink {n!r} (have: csv, xlsx, es)")
+            raise KeyError(f"unknown sink {n!r} (have: qc, csv, xlsx, es)")
         sinks.append(cls())
     return sinks
